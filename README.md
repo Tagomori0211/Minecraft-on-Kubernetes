@@ -17,6 +17,8 @@
 
 ---
 
+> **Status Platform（可視化）**: 本リポの監視基盤に相乗りする可視化ダッシュボード。公開 URL: [https://app.tagomori.dev](https://app.tagomori.dev)（リポ: [cloud-observability-gateway](https://github.com/Tagomori0211/cloud-observability-gateway)）。現行リポ名のまま運用。
+
 ## 📋 プロジェクト概要
 
 本プロジェクトは、**オンプレミス（自宅サーバー）と Google Compute Engine を Tailscale VPN で接続**し、コスト効率と可用性を両立させた Minecraft サーバー基盤です。
