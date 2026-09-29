@@ -1,14 +1,14 @@
 """
-GCP 課金アラート + オンプレ沈黙アラート → Discord 通知スクリプト
+GCP 課金アラート → Discord 通知スクリプト
 
-mc-monitoring-1 上の Docker Compose サービス discord-notifier から 5 分ごとに実行される。
-Pub/Sub Pull サブスクリプション billing-alerts-gce-pull をポーリングし、
-  - GCP Budget アラート（alertThresholdExceeded）
-  - HealthCheck が publish したオンプレ沈黙アラート（{"type":"onprem_silence"}）
-を判別して Discord に embed 通知を送信して ACK する。
+mc-monitoring-1 上の Docker Compose サービス discord-notifier として常駐し、5 分ごとに
+Pub/Sub Pull サブスクリプション billing-alerts-gce-pull をポーリングする。
+GCP Budget アラート（alertThresholdExceeded）を Discord に embed 通知して ACK する。
+（オンプレ沈黙などメトリクス系アラートは vmalert + Alertmanager が担当する）
 
 重複抑制: 同じしきい値(90%/100%)は当月内に1度だけ通知する。
           月初に月文字列が変わったら自動リセット。
+          Discord 送信に成功した時点で通知済みとして記録し、失敗時は再配信で再試行する。
 
 認証: GCE VM (mc-monitoring-1) の mc-monitoring-sa ADC（メタデータサーバー経由）
       → Pub/Sub subscriber + Secret Manager (webhook) アクセス権が必要（Terraform/notifications.tf）
@@ -37,13 +37,14 @@ def _current_month_key() -> str:
     return datetime.now(JST).strftime("%Y-%m")
 
 
-def _should_notify(threshold_pct: int) -> bool:
-    """当月まだ通知していないしきい値なら True、通知済みなら False。"""
-    month_key = _current_month_key()
-    if _notified_budget_thresholds.get(threshold_pct) == month_key:
-        return False
-    _notified_budget_thresholds[threshold_pct] = month_key
-    return True
+def _already_notified(threshold_pct: int) -> bool:
+    """当月すでに通知済みのしきい値なら True。"""
+    return _notified_budget_thresholds.get(threshold_pct) == _current_month_key()
+
+
+def _mark_notified(threshold_pct: int) -> None:
+    """Discord 送信成功後に、当月通知済みとして記録する。"""
+    _notified_budget_thresholds[threshold_pct] = _current_month_key()
 
 
 def _get_access_token() -> str:
@@ -103,22 +104,6 @@ def _post_discord(webhook_url: str, embed: dict) -> None:
         resp.read()
 
 
-def _silence_embed(data: dict) -> dict:
-    """HealthCheck からのオンプレ沈黙アラート embed を構築する。"""
-    detail = data.get("detail", "VictoriaMetrics へのクエリが失敗しました")
-    return {
-        "title": "🔌 オンプレ沈黙アラート",
-        "description": (
-            "mc-monitoring-1 の HealthCheck がオンプレ k3s からのメトリクス途絶を検知しました。\n"
-            f"詳細: {detail}"
-        ),
-        "color": 0xE74C3C,
-        "fields": [
-            {"name": "発生源", "value": "mc-monitoring-1 / HealthCheck", "inline": True},
-        ],
-    }
-
-
 def _budget_embed(data: dict) -> dict | None:
     """GCP Budget アラート embed を構築する。閾値超過なしなら None。"""
     threshold = float(data.get("alertThresholdExceeded", 0))
@@ -155,11 +140,7 @@ def _budget_embed(data: dict) -> dict | None:
 
 
 def _handle_message(webhook_url: str, data: dict) -> None:
-    """メッセージ種別を判別して Discord 通知。通知不要なら何もしない。"""
-    if data.get("type") == "onprem_silence":
-        _post_discord(webhook_url, _silence_embed(data))
-        print("Discord 通知送信完了: オンプレ沈黙アラート", flush=True)
-        return
+    """課金アラートを Discord に通知する。通知不要なら何もしない（ACK は呼び出し側）。"""
     embed = _budget_embed(data)
     if embed is None:
         print("閾値超過なし: ACK のみ実行", flush=True)
@@ -168,7 +149,7 @@ def _handle_message(webhook_url: str, data: dict) -> None:
     # 重複抑制: 当月すでに通知済みのしきい値はスキップ
     threshold = float(data.get("alertThresholdExceeded", 0))
     threshold_pct = int(round(threshold * 100))
-    if not _should_notify(threshold_pct):
+    if _already_notified(threshold_pct):
         print(
             f"課金アラート {threshold_pct}% は当月通知済みのためスキップ（ACK のみ実行）",
             flush=True,
@@ -176,6 +157,8 @@ def _handle_message(webhook_url: str, data: dict) -> None:
         return
 
     _post_discord(webhook_url, embed)
+    # 送信成功後に記録する（送信失敗時は例外で ACK されず、再配信時に再送される）
+    _mark_notified(threshold_pct)
     print(f"Discord 通知送信完了: 課金アラート {threshold_pct}%", flush=True)
 
 
