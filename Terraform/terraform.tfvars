@@ -19,6 +19,8 @@ common_config = {
 }
 
 # VMリスト
+# オンプレは k3s-worker のみ（監視は GCE で完結）。
+# 旧 k3s-monitoring（s3 ホスト, vmid 100）は 2026-09-30 に削除対象とした。
 vms = {
   # シングルノード: オンプレ：k3s-worker (Java/Bedrock マイクラゲームサーバー用 + Status Platform)
   k3s-worker = {
@@ -30,17 +32,5 @@ vms = {
     disk_size   = "200G"
     target_node = "mc-server"
     template_id = "ubuntu-2404-cloud-init"
-  }
-
-  # 監視専用ノード: s3ホスト上に配置
-  k3s-monitoring = {
-    vmid        = 100
-    desc        = "Dedicated Monitoring Node (Prometheus/Grafana)"
-    cores       = 4
-    memory      = 8192 # 8GiB
-    ip          = "192.168.0.152"
-    disk_size   = "50G"
-    target_node = "s3"
-    template_id = "ubuntu-2404-cloud-init-s3"
   }
 }
