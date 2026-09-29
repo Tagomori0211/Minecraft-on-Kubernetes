@@ -47,13 +47,13 @@ groups:
 
       # ── Tailscale auth-key 失効間近 ──
       # ⚠️ 鍵ローテ時は下記 epoch を更新（発行+80日 = 失効10日前）。
-      #    2026-06-19 発行 / 90日失効 → 1788739200 (2026-09-07) で発火。
+      #    2026-09-30 発行 / 90日失効 → 1797552000 (2026-12-18) で発火。
       # ℹ️ 鍵ローテは手動運用のため Discord 通知は抑止済み（alertmanager.yml の
       #    'null' receiver ルート）。アラート自体は Alertmanager UI に残る。
       - alert: TailscaleAuthKeyExpiringSoon
-        expr: time() > 1788739200
+        expr: time() > 1797552000
         labels:
           severity: warning
         annotations:
           summary: "Tailscale auth-key 失効間近（発行+80日経過）"
-          description: "Secret Manager tailscale-auth-key を再ローテしてください。失効すると autoheal/再作成インスタンスが Tailscale に参加できず入口が停止します。"
+          description: "Secret Manager tailscale-auth-key を再ローテしてください。失効すると mc-gateway を再作成したときに Tailscale に参加できず、入口が停止します。"
