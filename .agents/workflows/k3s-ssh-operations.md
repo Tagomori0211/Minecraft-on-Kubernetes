@@ -7,9 +7,9 @@ description: k3s クラスター操作スキル（SSH経由）
 ## ⚠️ 重要制約（必ず守ること）
 
 **Claude Code クライアントマシンでは以下を直接実行できない:**
-- `kubectl` — k3s-worker / k3s-monitoring に SSH してから実行すること
-- `helm` — k3s-worker に SSH してから実行すること
-- `gcloud` — **k3s-worker にのみインストール済み**（クライアント・k3s-monitoring には未インストール）
+- `kubectl` — k3s-worker に SSH してから `sudo kubectl` で実行すること
+- `helm` — k3s-worker に SSH してから **sudo なし** で実行すること（`sudo helm` は root に KUBECONFIG が無く失敗する）
+- `gcloud` — **k3s-worker にのみインストール済み**
 
 **すべての k3s 操作は SSH 経由で行う。**
 
@@ -17,12 +17,11 @@ description: k3s クラスター操作スキル（SSH経由）
 
 ## 接続先ホスト一覧
 
-| ホスト名 | 役割 | Tailscale IP | kubectl | gcloud |
-|---------|------|-------------|---------|--------|
-| `k3s-worker` | ゲームサーバー (minecraft ns) | 100.107.122.45 | `sudo kubectl` ✅ | ✅ |
-| `k3s-monitoring` | Prometheus / Grafana | 100.105.190.5 | `sudo kubectl` ✅ | ❌ |
+| ホスト名 | 役割 | Tailscale IP | kubectl | helm | gcloud |
+|---------|------|-------------|---------|------|--------|
+| `k3s-worker` | 単一ノード k3s（minecraft / monitoring-prometheus ns） | 100.107.122.45 | `sudo kubectl` ✅ | `helm` ✅ | ✅ |
 
-SSH ホスト名は `~/.ssh/config` で解決済み。
+SSH ホスト名は `~/.ssh/config` で解決済み。GCE VM（mc-proxy / mc-monitoring-1）へは k3s-worker から IAP SSH する（後述）。
 
 ---
 
@@ -32,10 +31,6 @@ SSH ホスト名は `~/.ssh/config` で解決済み。
 
 ```bash
 ssh k3s-worker 'sudo kubectl get pods -n minecraft'
-```
-
-```bash
-ssh k3s-monitoring 'sudo kubectl get pods -n monitoring-prometheus'
 ```
 
 ### 複数コマンドの連結（SSH内では && / ; 可）
@@ -71,7 +66,7 @@ ssh k3s-worker 'sudo kubectl get pods -n minecraft -o wide'
 ```
 
 ```bash
-ssh k3s-monitoring 'sudo kubectl get pods -n monitoring-prometheus'
+ssh k3s-worker 'sudo kubectl get pods -n monitoring-prometheus'
 ```
 
 ### ログ確認
@@ -81,33 +76,35 @@ ssh k3s-worker 'sudo kubectl logs deploy/deploy-bedrock -c bedrock -n minecraft 
 ```
 
 ```bash
-ssh k3s-worker 'sudo kubectl logs deploy/mc-survival -n minecraft --tail=20'
+ssh k3s-worker 'sudo kubectl logs deploy/deploy-survival -c minecraft -n minecraft --tail=20'
 ```
 
 ### ⚠️ 全サーバー共通: Pod 再起動は必ず replicas 0 → 1（rollout restart 絶対禁止）
 
-`minecraft` namespace の **すべての Deployment**（lobby / survival / mod / bedrock）に適用。
+`minecraft` namespace のゲームサーバー Deployment（`deploy-survival` / `deploy-bedrock`）に適用。
 
-**理由:** `rollout restart` や rolling update は旧Pod・新Podが瞬間的に並走し、合計メモリ要求が物理メモリを超えて OOMキラー発動。特に mod(30Gi)・survival(16Gi) で顕著。
+**理由:** `rollout restart` や rolling update は旧Pod・新Podが瞬間的に並走し、合計メモリ要求が物理メモリを超えて OOMキラー発動。特に survival(30Gi) で顕著。
 
 ```bash
 # ❌ 禁止
 ssh k3s-worker 'sudo kubectl rollout restart deployment/deploy-survival -n minecraft'
 
-# ✅ 正しい手順（survival の例、deploy-lobby / deploy-mod / deploy-bedrock も同様）
+# ✅ 正しい手順（survival の例、deploy-bedrock も同様）
 ssh k3s-worker 'sudo kubectl scale deployment deploy-survival -n minecraft --replicas=0'
 # 旧Podの完全終了を確認してから
 ssh k3s-worker 'sudo kubectl scale deployment deploy-survival -n minecraft --replicas=1'
 ```
 
-helm upgrade を伴う場合:
+helm upgrade を伴う場合（Helm 管理は survival のみ。bedrock は `backend-servers.yaml` を kubectl apply）:
 ```bash
+# 0. ローカルの chart / values を k3s-worker へ同期
+rsync -avz --delete /home/shinari/MC_k3s/k8s/onprem/helm/ k3s-worker:~/k8s_manifests/helm/
 # 1. 先に停止
-ssh k3s-worker 'sudo kubectl scale deployment deploy-mod -n minecraft --replicas=0'
+ssh k3s-worker 'sudo kubectl scale deployment deploy-survival -n minecraft --replicas=0'
 # 2. 旧Pod完全終了を確認
-ssh k3s-worker 'sudo kubectl get pods -n minecraft'
+ssh k3s-worker 'sudo kubectl wait --for=delete pod -l app=mc-survival -n minecraft --timeout=180s'
 # 3. helm upgrade（template の replicas=1 が再適用されて新Pod起動）
-ssh k3s-worker 'cd ~/Minecraft_java_k3s/k8s/onprem/helm && sudo helm upgrade industry ./minecraft-server -f values-industry.yaml -n minecraft'
+ssh k3s-worker 'helm upgrade survival ~/k8s_manifests/helm/minecraft-server -f ~/k8s_manifests/helm/values-survival.yaml -n minecraft'
 ```
 
 ### BDS への say コマンド送信
@@ -119,7 +116,7 @@ ssh k3s-worker 'POD=$(sudo kubectl get pod -n minecraft -l app=mc-bedrock --no-h
 ### Helm リリース一覧
 
 ```bash
-ssh k3s-worker 'sudo helm list -n minecraft'
+ssh k3s-worker 'helm list -n minecraft'
 ```
 
 ### gcloud（k3s-worker 経由）
@@ -128,18 +125,24 @@ ssh k3s-worker 'sudo helm list -n minecraft'
 ssh k3s-worker 'gcloud compute instances list'
 ```
 
-```bash
-ssh k3s-worker 'gcloud compute ssh mc-proxy-1 --zone=asia-northeast1-b --tunnel-through-iap --command="docker compose -f /opt/mc-proxy/compose.yaml ps"'
-```
-
-### Prometheus / Grafana 確認（k3s-monitoring）
+mc-proxy は MIG 管理でインスタンス名が動的（`mc-proxy-xxxx`）なため、現行名を取得してから接続する:
 
 ```bash
-ssh k3s-monitoring 'sudo kubectl get pods -n monitoring-prometheus'
+ssh k3s-worker 'NAME=$(gcloud compute instances list --filter="name~^mc-proxy-" --format="value(name)") && gcloud compute ssh "$NAME" --zone=asia-northeast1-b --tunnel-through-iap --command="sudo docker compose -f /opt/mc-proxy/compose.yaml ps"'
 ```
 
 ```bash
-ssh k3s-monitoring 'sudo kubectl logs deploy/prometheus -n monitoring-prometheus --tail=20'
+ssh k3s-worker 'gcloud compute ssh mc-monitoring-1 --zone=asia-northeast1-b --tunnel-through-iap --command="sudo docker compose -f /opt/mc-monitoring/compose.yaml ps"'
+```
+
+### 監視エージェント確認（vmagent / Vector）
+
+```bash
+ssh k3s-worker 'sudo kubectl logs deploy/vmagent -n monitoring-prometheus --tail=20'
+```
+
+```bash
+ssh k3s-worker 'sudo kubectl logs ds/vector -n monitoring-prometheus --tail=20'
 ```
 
 ---
@@ -175,8 +178,4 @@ ssh k3s-worker 'sudo kubectl get nodes -o wide'
 
 ```bash
 ssh k3s-worker 'sudo systemctl status k3s'
-```
-
-```bash
-ssh k3s-monitoring 'sudo systemctl status k3s-agent'
 ```

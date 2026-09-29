@@ -1,198 +1,107 @@
-# GCE Minecraft Proxy（GKE 代替）
+# GCE: Minecraft 入口プロキシ（mc-proxy）/ 監視 VM（mc-monitoring-1）
 
-GKE Standard を GCE 単一 VM + Docker Compose に置換したプロキシ構成。月額 ¥19,700 → ¥3,680（81% 減）。
+GCE 上で動く 2 台の VM の構成ファイル一式。VM 自体は Terraform（`Terraform/gce.tf` / `Terraform/monitoring.tf`）で管理する。
 
-## アーキテクチャ
+| VM | 役割 | 構成 |
+|----|------|------|
+| `mc-proxy-xxxx`（MIG `mc-proxy-mig`） | 公開エンドポイント 35.200.78.252 | e2-micro / socat で Tailscale 越しにオンプレ k3s へ透過転送 |
+| `mc-monitoring-1` | 監視・通知 | e2-small / VictoriaMetrics・VictoriaLogs・Grafana・vmalert・Alertmanager |
+
+## アーキテクチャ（mc-proxy）
 
 ```
-[Player Java]    → 35.200.78.252:25565/TCP ┐
-                                           │  GCE VM (e2-medium, asia-northeast1-b)
-[Player Bedrock] → 35.200.78.252:19132/UDP │  ├─ nginx-stream (host net)
-                                           │  │   ├─ TCP 25565 → 127.0.0.1:25577 (velocity)
-                                           │  │   └─ UDP 19132 → 100.107.122.45:19132
-                                           │  ├─ velocity (host net, 25577)
+[Player Java]    → 35.200.78.252:25565/TCP ┐  GCE mc-proxy (MIG, e2-micro, asia-northeast1-b)
+                                           │  ├─ socat-tcp     TCP4-LISTEN:25565,fork → 100.107.122.45:30065
+[Player Bedrock] → 35.200.78.252:19132/UDP │  ├─ socat-bedrock UDP4-LISTEN:19132,fork → 100.107.122.45:19132
                                            │  └─ tailscaled (host systemd, kernel mode)
-                                           │       │
-                                           └──────┼─→ Tailscale → 100.107.122.45 (k3s-worker)
-                                                  │      ├─ Survival  :30065
-                                                  │      ├─ MOD       :30066
-                                                  │      ├─ Lobby     :30067
-                                                  │      └─ Bedrock   :19132
+                                           │        │
+                                           └────────┼─→ Tailscale → 100.107.122.45 (k3s-worker)
+                                                    │      ├─ Survival (svc-survival NodePort) :30065
+                                                    │      └─ Bedrock  (deploy-bedrock hostPort) :19132
 ```
+
+- MIG はサイズ 1。TCP:25565 ヘルスチェックで異常時に自動再作成（オートヒーリング）する
+- インスタンス名は動的（`mc-proxy-xxxx`）。Tailscale IP（hostname `gce-mc-proxy`）も再作成で変わる
+- Bedrock は RakNet を壊さないよう L7 / Nginx UDP プロキシを使わず、socat の fork 透過転送に限定している
 
 ## ファイル構成
 
 ```
 gce/
-├── README.md                       # このファイル
-├── compose.yaml                    # velocity + nginx-stream
-├── nginx/nginx.conf                # TCP 25565 + UDP 19132 stream proxy
-├── velocity/
-│   ├── velocity.toml               # Velocity 設定（Tailscale IP 直書き）
-│   └── forwarding.secret.example   # 平文は Secret Manager から取得
+├── README.md
+├── compose.yaml                  # mc-proxy: socat-tcp / socat-bedrock / node-exporter / vmagent-host
+├── vmagent.yml                   # mc-proxy のホストメトリクス → mc-monitoring-1 へ remote_write
+├── cloud-init.yaml               # mc-proxy 初期セットアップ（gce.tf がインスタンステンプレートに埋め込む）
 ├── systemd/
-│   ├── mc-proxy.service            # Compose 起動 systemd unit
-│   └── fetch-secrets.sh            # Secret Manager から forwarding.secret 取得
-└── cloud-init.yaml                 # VM 初期セットアップ（Docker / Tailscale / mc-proxy）
+│   ├── mc-proxy.service          # compose 起動 unit
+│   └── fetch-secrets.sh          # 旧 Velocity 用 secret の取得（Secret が無ければスキップ。後述）
+├── monitoring-cloud-init.yaml    # mc-monitoring-1 初期セットアップ（monitoring.tf が埋め込む）
+└── monitoring/                   # mc-monitoring-1 の Docker Compose 一式（/opt/mc-monitoring に配置）
+    ├── compose.yaml
+    ├── vmagent-host.yml
+    ├── vector/vector.yaml        # k3s Vector DaemonSet からのログ受信 → VictoriaLogs
+    ├── vmalert/rules/minecraft.yml
+    ├── alertmanager/alertmanager.yml
+    ├── provisioning/             # Grafana データソース / ダッシュボード provider
+    ├── dashboards/               # Grafana ダッシュボード JSON
+    └── scripts/discord-notifier.py  # 課金アラート（Pub/Sub pull）→ Discord
 ```
 
-## Phase 0: Secret Manager 準備（VM 作成前に実施）
+## ⚠️ 変更時の注意
 
-### 0-1. GKE 既存 Secret から値を取り出し
+- **cloud-init は VM 作成時に本リポジトリ main ブランチの `gce/` を clone して配置する**
+  （mc-proxy → `/opt/mc-proxy`、mc-monitoring-1 → `/opt/mc-monitoring`）。
+  `compose.yaml` / `vmagent.yml` / `systemd/*` / `monitoring/*` を移動・改名すると、次回のオートヒーリング時に起動できなくなる。
+- **`cloud-init.yaml` を 1 文字でも変更すると**、`terraform apply` でインスタンステンプレートが再作成され、
+  MIG が入口 VM を REPLACE する（数分のダウンタイム）。apply は `.claude/commands/tf-safe-apply.md` の手順で行う。
+- `gce/` 配下の変更は稼働中の VM には自動反映されない。反映は VM の再作成、または IAP SSH で
+  `/opt/mc-proxy`（`/opt/mc-monitoring`）の該当ファイルを更新して `docker compose up -d` で行う。
 
-```bash
-# Tailscale auth key
-TS_KEY=$(kubectl --context=gke-tak get secret -n minecraft tailscale-auth \
-    -o jsonpath='{.data.TS_AUTHKEY}' | base64 -d)
+## Secret Manager
 
-# Velocity forwarding secret
-VEL_SECRET=$(kubectl --context=gke-tak get secret -n minecraft velocity-secret \
-    -o jsonpath='{.data.velocity-forwarding-secret}' | base64 -d)
-```
+| Secret | 用途 |
+|--------|------|
+| `tailscale-auth-key` | cloud-init の `tailscale up`（reusable / pre-approved な auth key を登録すること） |
+| `mc-discord-webhook-url` | mc-monitoring-1 の `.env`（alertmanager-discord）・discord-notifier・バックアップ通知 |
 
-### 0-2. Secret Manager に登録
-
-```bash
-PROJECT=project-61cf5742-d0ea-45ed-ac0
-
-# Secret Manager API 有効化（初回のみ）
-gcloud services enable secretmanager.googleapis.com --project=$PROJECT
-
-# tailscale-auth-key
-printf '%s' "$TS_KEY" | gcloud secrets create tailscale-auth-key \
-    --data-file=- \
-    --replication-policy=automatic \
-    --project=$PROJECT
-
-# velocity-forwarding-secret
-printf '%s' "$VEL_SECRET" | gcloud secrets create velocity-forwarding-secret \
-    --data-file=- \
-    --replication-policy=automatic \
-    --project=$PROJECT
-
-# 確認
-gcloud secrets list --project=$PROJECT
-```
-
-### 0-3. 注意事項
-
-- Tailscale auth key は **再利用可能（reusable）** でない場合、Secret 登録時点で消費される。
-  `tailnet 管理画面 → Settings → Keys` で reusable / pre-approved な auth key を生成すること。
-- `velocity-forwarding-secret` の値は **オンプレ Paper サーバーの `paper-global.yml` の secret と一致する必要あり**。値を変更する場合は両側を同時更新する。
-
-## Phase 1〜2: VM 作成（Terraform）
-
-```bash
-cd /home/shinari/MC_k3s/Terraform
-
-# プラン確認（追加のみ・GKE 無傷を確認）
-terraform plan -var-file=secret.tfvars
-
-# Apply（VM はエフェメラル IP で起動）
-terraform apply -var-file=secret.tfvars
-
-# 出力で VM の external IP を確認
-terraform output mc_proxy_external_ip
-```
-
-VM 起動後、cloud-init が Docker / Tailscale / mc-proxy.service をプロビジョニング。3〜5 分で完了。
-
-### 動作確認
-
-```bash
-# SSH（IAP 経由）
-gcloud compute ssh mc-proxy-1 --zone=asia-northeast1-b --tunnel-through-iap
-
-# VM 内
-sudo systemctl status mc-proxy.service     # active (exited)
-docker compose -f /opt/mc-proxy/compose.yaml ps    # Up
-tailscale status                            # 100.107.122.45 reachable
-tailscale ping --until-direct 100.107.122.45
-
-# 外部から
-EPHEMERAL_IP=$(terraform output -raw mc_proxy_external_ip)
-nc -zv $EPHEMERAL_IP 25565       # Java TCP
-nc -zuv $EPHEMERAL_IP 19132      # Bedrock UDP
-```
-
-## Phase 3: 静的IP カットオーバー（ダウンタイム発生）
-
-```bash
-# 1. GKE LB 削除（35.200.78.252 をデタッチ）
-kubectl --context=gke-tak delete svc nginx-gw-java -n minecraft
-kubectl --context=gke-tak delete svc bedrock-direct-lb -n minecraft
-
-# 2. GCE VM に静的IP 35.200.78.252 を付け替え
-gcloud compute instances delete-access-config mc-proxy-1 \
-    --zone=asia-northeast1-b
-gcloud compute instances add-access-config mc-proxy-1 \
-    --address=35.200.78.252 \
-    --zone=asia-northeast1-b
-
-# 3. 疎通確認
-nc -zv 35.200.78.252 25565
-nc -zuv 35.200.78.252 19132
-```
-
-その後、`gce.tf` の `access_config {}` を `access_config { nat_ip = google_compute_address.minecraft_ip.address }` に書き換えて `terraform apply` で state を整合させる。
-
-## Phase 4: GKE 削除 + クリーンアップ
-
-```bash
-# 1. GKE クラスター削除（gke.tf から google_container_* リソース削除後）
-terraform apply -var-file=secret.tfvars
-
-# 2. 廃 IP 解放
-gcloud compute addresses delete minecraft-unified-ip --region=asia-northeast1
-
-# 3. k8s/gke/ 削除
-rm -rf /home/shinari/MC_k3s/k8s/gke
-```
-
-## ロールバック
-
-| Phase | 戻し方 |
-|-------|-------|
-| Phase 2 失敗 | `terraform destroy -target=google_compute_instance.mc_proxy` |
-| Phase 3 失敗 | `gcloud compute instances delete-access-config mc-proxy-1 ...` で IP デタッチ → `kubectl apply -f k8s/gke/20-nginx-gw.yaml -f k8s/gke/20-bedrock-direct.yaml` で LB 復旧 |
-| Phase 4 後 | クラスター削除後の戻しは困難。Phase 3 完了から 24h 安定稼働を確認してから着手 |
+- Tailscale auth key をローテしたら、`monitoring/vmalert/rules/minecraft.yml` の
+  `TailscaleAuthKeyExpiringSoon` の epoch も更新する。
+- `systemd/fetch-secrets.sh` は Velocity 時代の `velocity-forwarding-secret` を取得する名残。
+  Secret が存在しなければスキップするため無害だが、撤去には `cloud-init.yaml` の変更（= 入口 VM 再作成）が伴う。
 
 ## 運用
 
-### Velocity Forwarding Secret ローテーション
+### IAP SSH（gcloud は k3s-worker から実行）
 
 ```bash
-# 1. 新値を Secret Manager に登録（new version）
-printf '%s' "$NEW_SECRET" | gcloud secrets versions add velocity-forwarding-secret \
-    --data-file=- --project=$PROJECT
+# mc-proxy: 現行インスタンス名を取得してから接続
+ssh -t k3s-worker 'NAME=$(gcloud compute instances list --filter="name~^mc-proxy-" --format="value(name)") && gcloud compute ssh "$NAME" --zone=asia-northeast1-b --tunnel-through-iap'
 
-# 2. オンプレ Paper サーバーの paper-global.yml も同時更新
-# 3. mc-proxy.service 再起動で新 secret を適用
-gcloud compute ssh mc-proxy-1 --zone=asia-northeast1-b --tunnel-through-iap \
-    --command="sudo systemctl restart mc-proxy.service"
+# mc-monitoring-1
+ssh -t k3s-worker 'gcloud compute ssh mc-monitoring-1 --zone=asia-northeast1-b --tunnel-through-iap'
 ```
 
-### ログ確認
+### VM 内での確認
 
 ```bash
-# cloud-init のブートストラップログ
+# mc-proxy
+sudo systemctl status mc-proxy.service             # active (exited)
+sudo docker compose -f /opt/mc-proxy/compose.yaml ps
+sudo docker compose -f /opt/mc-proxy/compose.yaml logs -f socat-tcp
+sudo docker compose -f /opt/mc-proxy/compose.yaml logs -f socat-bedrock
+tailscale ping --until-direct 100.107.122.45
+
+# mc-monitoring-1
+sudo docker compose -f /opt/mc-monitoring/compose.yaml ps
+
+# 共通: cloud-init のブートストラップログ / Tailscale
 sudo cat /var/log/cloud-init-output.log
-
-# Compose サービスログ
-docker compose -f /opt/mc-proxy/compose.yaml logs -f velocity
-docker compose -f /opt/mc-proxy/compose.yaml logs -f nginx-stream
-
-# Tailscale 状態
 journalctl -u tailscaled -f
 ```
 
-### コスト
+### 外部からの疎通確認
 
-| 項目 | 月額 |
-|------|------|
-| e2-medium (asia-northeast1) | ¥3,500 |
-| pd-balanced 20GB | ¥120 |
-| 静的IP × 1（VM アタッチ中は無料） | ¥0 |
-| Egress | ~¥50 |
-| Secret Manager | ¥0〜10 |
-| **合計** | **約 ¥3,680/month** |
+```bash
+nc -zv 35.200.78.252 25565       # Java TCP
+nc -zuv 35.200.78.252 19132      # Bedrock UDP
+```

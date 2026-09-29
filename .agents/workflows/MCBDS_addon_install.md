@@ -5,8 +5,9 @@ description: Install Bedrock Addon (.mcpack / .mcaddon) to k3s Bedrock Server
 このワークフローは、`.mcpack` または `.mcaddon` 形式の Bedrock 専用アドオンをオンプレミスの k3s Bedrock サーバーに導入する手順をまとめます。
 
 **前提:**
-- `k8s/onprem/onprem_kubeconfig.yaml` が存在すること
-- 導入するアドオンファイルがカレントディレクトリに配置済みであること
+- kubectl はすべて `ssh k3s-worker 'sudo kubectl ...'` 経由で実行する（クライアントから直接実行不可）
+- 導入するアドオンファイルが `MC_addon-raw/` に配置済みであること
+- ワールド名は `sushi_server`（`k8s/onprem/backend-servers.yaml` の `LEVEL_NAME` と同じ）
 
 ---
 
@@ -33,9 +34,10 @@ cat tmp_addon/manifest.json
 ## 2. Bedrock Pod 名の取得
 
 ```bash
-POD=$(kubectl --kubeconfig=k8s/onprem/onprem_kubeconfig.yaml get pod \
-  -n minecraft -l app=mc-bedrock \
-  -o jsonpath='{.items[0].metadata.name}')
+POD=$(ssh k3s-worker 'sudo kubectl get pod -n minecraft -l app=mc-bedrock -o jsonpath="{.items[0].metadata.name}"')
+```
+
+```bash
 echo $POD
 ```
 
@@ -78,7 +80,7 @@ scp tmp_packs.json k3s-worker:/tmp/packs.json
 
 ```bash
 ssh k3s-worker "sudo kubectl cp /tmp/packs.json \
-  minecraft/$POD:'/data/worlds/Bedrock level/world_resource_packs.json' -c bedrock"
+  minecraft/$POD:/data/worlds/sushi_server/world_resource_packs.json -c bedrock"
 ```
 
 ---
@@ -87,7 +89,7 @@ ssh k3s-worker "sudo kubectl cp /tmp/packs.json \
 
 ```bash
 ssh k3s-worker "sudo kubectl exec -n minecraft $POD -c bedrock -- \
-  chown -R 1000:1000 '/data/worlds/Bedrock level'"
+  chown -R 1000:1000 /data/worlds/sushi_server"
 ```
 
 ---
@@ -95,20 +97,18 @@ ssh k3s-worker "sudo kubectl exec -n minecraft $POD -c bedrock -- \
 ## 6. サーバーの再起動
 
 BDS は `rollout restart` 禁止。replicas=0 → 1 で完全再起動します。
+プレイヤーが接続中の可能性がある場合は `.claude/commands/bedrock-restart.md` のアナウンス付き手順を使うこと。
 
 ```bash
-kubectl --kubeconfig=k8s/onprem/onprem_kubeconfig.yaml \
-  scale deployment deploy-bedrock -n minecraft --replicas=0
+ssh k3s-worker 'sudo kubectl scale deployment deploy-bedrock -n minecraft --replicas=0'
 ```
 
 ```bash
-kubectl --kubeconfig=k8s/onprem/onprem_kubeconfig.yaml \
-  wait --for=delete pod/$POD -n minecraft --timeout=60s
+ssh k3s-worker "sudo kubectl wait --for=delete pod/$POD -n minecraft --timeout=60s"
 ```
 
 ```bash
-kubectl --kubeconfig=k8s/onprem/onprem_kubeconfig.yaml \
-  scale deployment deploy-bedrock -n minecraft --replicas=1
+ssh k3s-worker 'sudo kubectl scale deployment deploy-bedrock -n minecraft --replicas=1'
 ```
 
 ---
@@ -120,7 +120,7 @@ rm -rf tmp_addon tmp_packs.json
 ```
 
 ```bash
-ssh k3s-worker "rm -rf /tmp/addon_extracted /tmp/packs.json"
+ssh k3s-worker 'rm -rf /tmp/addon_extracted /tmp/packs.json'
 ```
 
 ---
@@ -128,8 +128,7 @@ ssh k3s-worker "rm -rf /tmp/addon_extracted /tmp/packs.json"
 ## 8. 起動確認
 
 ```bash
-kubectl --kubeconfig=k8s/onprem/onprem_kubeconfig.yaml \
-  logs deploy/deploy-bedrock -c bedrock -n minecraft --tail=20
+ssh k3s-worker 'sudo kubectl logs deploy/deploy-bedrock -c bedrock -n minecraft --tail=20'
 ```
 
 `Server started.` が表示されれば成功です。

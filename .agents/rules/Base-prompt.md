@@ -48,10 +48,10 @@ k3s クラスターへの操作が必要な場合は `.agents/workflows/k3s-ssh-
 
 **絶対に守ること:**
 - `kubectl` / `helm` / `gcloud` はクライアントマシンから直接実行できない — SSH 経由のみ
-- `gcloud` は k3s-worker にのみインストール済み（k3s-monitoring には未インストール）
-- SSH ホスト名は `~/.ssh/config` で解決済み: `k3s-worker` / `k3s-monitoring`
-- GCE VM へは IAP SSH: `gcloud compute ssh mc-proxy-1 --zone=asia-northeast1-b --tunnel-through-iap`
-  （ただし gcloud 自体は k3s-worker から実行）
+- k3s は `k3s-worker` の単一ノード構成。`gcloud` も k3s-worker にのみインストール済み
+- SSH ホスト名は `~/.ssh/config` で解決済み: `k3s-worker`
+- GCE VM へは IAP SSH（gcloud 自体は k3s-worker から実行）。入口 `mc-proxy` は MIG 管理で
+  インスタンス名が動的なため、`gcloud compute instances list --filter="name~^mc-proxy-"` で現行名を取得してから接続する
 
 ### Pod 再起動ルール（最重要）
 `minecraft` namespace の **全 Deployment（survival / bedrock）** に適用:
@@ -68,4 +68,4 @@ k3s クラスターへの操作が必要な場合は `.agents/workflows/k3s-ssh-
 
 - **model は必ず `haiku` を指定**（`model="haiku"`）
 - プロンプトにプロジェクトルールを明記（日本語出力・SSH経由kubectl・pod再起動手順）
-- 詳細は `.claude/skills/haiku-subagent/SKILL.md` を参照
+- 詳細は `.claude/commands/haiku-subagent.md` を参照

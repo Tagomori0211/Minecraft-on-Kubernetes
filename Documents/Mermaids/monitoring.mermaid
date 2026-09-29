@@ -22,7 +22,7 @@ flowchart LR
 
     subgraph GCP_Svc["GCP マネージドサービス"]
         PubSub["Pub/Sub<br>alerts<br>(pull subscription)"]
-        Budget["課金予算アラート<br>80%/90%/100%発火"]
+        Budget["課金予算アラート<br>90%/100%発火"]
         BQ[("BigQuery<br>minecraft_monitoring<br>server_metrics")]
     end
 

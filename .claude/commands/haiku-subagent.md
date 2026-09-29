@@ -49,7 +49,7 @@ Agent(
     kubectl/helmはSSH経由のみ実行可能です。
 
     ssh k3s-worker 'sudo kubectl get pods -n minecraft -o wide'
-    ssh k3s-worker 'sudo kubectl logs deploy/deploy-mod -c minecraft -n minecraft --tail=50'
+    ssh k3s-worker 'sudo kubectl logs deploy/deploy-survival -c minecraft -n minecraft --tail=50'
   """
 )
 ```

@@ -9,11 +9,12 @@
    - **禁止パターン**: `git add -A && git commit`, `git commit && git push`, `cmd1; cmd2`, `cmd1 || cmd2`, `cmd1 | cmd2`
    - **execute_command 前セルフチェック義務**: コマンド文字列に `&&`, `;`（セミコロン）, `||`, `|`（パイプ）が含まれていないか確認すること。含まれる場合は SSH 引数内部かを判断し、ローカルシェルなら分割すること。
 4. **各作業終了後は commit + push**：リモートを常に最新に保つ。
-5. **コミットメッセージは英語で詳細に**：
+5. **コミットメッセージは英語で詳細に**（件名と本文の間は必ず空行を 1 行入れる）：
    ```
    feat(scope): Description
-       - Detail 1
-       - Detail 2
+
+   - Detail 1
+   - Detail 2
    ```
 
 ## プロジェクト全体像の把握
@@ -54,32 +55,38 @@ k3s クラスターへの操作は `.agents/workflows/k3s-ssh-operations.md` を
 
 **絶対に守ること:**
 - `kubectl` / `helm` / `gcloud` はクライアントマシンから直接実行できない — SSH 経由のみ
-- `gcloud` は k3s-worker にのみインストール済み（k3s-monitoring には未インストール）
-- SSH ホスト名は `~/.ssh/config` で解決済み: `k3s-worker` / `k3s-monitoring`
-- GCE VM へは IAP SSH: `gcloud compute ssh mc-proxy-1 --zone=asia-northeast1-b --tunnel-through-iap`（gcloud 自体は k3s-worker から実行）
+- k3s は `k3s-worker` の単一ノード構成。`gcloud` も k3s-worker にのみインストール済み
+- SSH ホスト名は `~/.ssh/config` で解決済み: `k3s-worker`
+- `helm` は **sudo なし** で実行する（`sudo helm` は root に KUBECONFIG が無く localhost:8080 へ接続して失敗する）
+- GCE VM へは IAP SSH（gcloud 自体は k3s-worker から実行）
+  - 入口 `mc-proxy` は MIG 管理でインスタンス名が動的（`mc-proxy-xxxx`）。`mc-proxy-1` は存在しない
+  - 監視 VM は固定名 `mc-monitoring-1`
 
 ### 基本パターン
 
 ```bash
 # 単発コマンド
 ssh k3s-worker 'sudo kubectl get pods -n minecraft'
-ssh k3s-monitoring 'sudo kubectl get pods -n monitoring-prometheus'
+ssh k3s-worker 'sudo kubectl get pods -n monitoring-prometheus'
 
 # 複数コマンド（SSH 内では && 可）
 ssh k3s-worker 'sudo kubectl get pods -n minecraft && sudo kubectl get pvc -n minecraft'
+
+# mc-proxy（MIG）へ IAP SSH: 現行インスタンス名を取得してから接続
+ssh k3s-worker 'NAME=$(gcloud compute instances list --filter="name~^mc-proxy-" --format="value(name)") && gcloud compute ssh "$NAME" --zone=asia-northeast1-b --tunnel-through-iap --command="sudo docker compose -f /opt/mc-proxy/compose.yaml ps"'
 ```
 
 ---
 
 ## Pod 再起動ルール（最重要）
 
-`minecraft` namespace の **全 Deployment（lobby / survival / mod / bedrock）** に適用:
+`minecraft` namespace の **ゲームサーバー Deployment（deploy-survival / deploy-bedrock）** に適用:
 
 - **`kubectl rollout restart` は絶対禁止**
 - **正しい手順: `replicas=0` で完全停止 → `replicas=1` で起動**
 - helm upgrade 時も必ず先に replicas=0 で停止してから実行
 
-**理由:** `rollout restart` や rolling update は旧Pod・新Podが瞬間的に並走し、合計メモリ要求が物理メモリを超えて OOMキラー発動。特に mod(30Gi)・survival(16Gi) で顕著。
+**理由:** `rollout restart` や rolling update は旧Pod・新Podが瞬間的に並走し、合計メモリ要求が物理メモリを超えて OOMキラー発動。特に survival(30Gi) で顕著。
 
 ```bash
 # ❌ 禁止
@@ -101,7 +108,7 @@ ssh k3s-worker 'sudo kubectl scale deployment deploy-survival -n minecraft --rep
 
 ### リソース名
 - 全て kebab-case（アンダースコア禁止）
-- `<service>-<role>` 形式: `deploy-bedrock`, `svc-bedrock`, `pvc-bedrock`, `velocity-proxy`
+- `<service>-<role>` 形式: `deploy-bedrock`, `svc-bedrock`, `pvc-bedrock`, `gcs-backup-cronjob`
 
 ### 必須 Label
 全リソースに以下を必ず付けること:
@@ -114,14 +121,14 @@ labels:
 ```
 
 ### PVC / ConfigMap / Secret 命名
-- PVC: `<service>-<用途>-pvc`（例: `pvc-bedrock`, `pvc-tailscale-state`）
+- PVC: `<service>-<用途>-pvc`（既存は `pvc-bedrock`, `pvc-survival`）
 - ConfigMap: `<service>-<内容>-cm`（例: `bedrock-backup-script-cm`）
-- Secret: `<service>-<内容>-secret`（例: `tailscale-auth`）
+- Secret: `<service>-<内容>-secret`（例: `bedrock-backup-secret`）
 
 ### ❌ 禁止事項
 - `test`, `temp`, `new` などの曖昧な名前
 - `default` namespace への直デプロイ（namespace なしデプロイ禁止）
-- label なしリソースの作成（Prometheus のサービスディスカバリが機能しなくなる）
+- label なしリソースの作成（Vector がログの `job` ラベルに、バックアップ／アナウンス処理が Pod 特定に `app.kubernetes.io/component` を使うため）
 - BDS Deployment への `rollout restart`（旧Podと新Podが並走するリスク）
 
 ---
@@ -149,14 +156,14 @@ sleep+300s 経過しても進展がない場合、以下を自動実施:
 必要に応じてサブエージェントを展開してよい。ただし:
 - **model は必ず `haiku` を指定**
 - プロンプトにプロジェクトルールを明記（日本語出力・SSH経由kubectl・pod再起動手順）
-- 詳細は `.claude/skills/haiku-subagent/SKILL.md` を参照
+- 詳細は `.claude/commands/haiku-subagent.md` を参照
 
-## スキル化自動判定
+## コマンド化自動判定
 
-ユーザーから新たな指示を受け取った際、以下のメタスキルで自動判定し、繰り返し発生しうるタスクはスキル化を提案すること:
+ユーザーから新たな指示を受け取った際、以下のメタコマンドで自動判定し、繰り返し発生しうるタスクはコマンド化を提案すること:
 - **判定基準**: 反復可能性・手順の複雑さ・エラーリスク・外部依存・知識陳腐化（5軸×2点=10点満点。4点以上で提案、7点以上で強く推奨）
-- **原則**: ユーザーの許可なくスキルファイルを作成しない。必ず提案→確認→作成のフローを踏む
-- **詳細**: `.claude/skills/skill-recommender/SKILL.md` を参照
+- **原則**: ユーザーの許可なくコマンドファイルを作成しない。必ず提案→確認→作成のフローを踏む
+- **詳細**: `.claude/commands/command-recommender.md` を参照
 
 ---
 
@@ -194,9 +201,10 @@ sleep+300s 経過しても進展がない場合、以下を自動実施:
 
 ---
 
-## 🗂️ `documents/` ディレクトリの凡例
+## 🗂️ `Documents/` ディレクトリの凡例
 
 - `Mermaids/` — アーキテクチャ図（Mermaid / SVG）
-- `OperationPostmortem/` — インシデントポストモーテム（障害記録）
-- `README/` — 技術ドキュメント・ガイド
+- `OperationPostmortem/` — インシデントポストモーテム（障害記録。当時の記録のため内容は書き換えない）
+- `project_mastery.md` — トラフィックフロー・構成の要約
+- `DocMd/` / `Task_mds/` — ローカル専用（.gitignore 対象）
 - 新規ドキュメント追加時は適切なサブディレクトリに配置すること

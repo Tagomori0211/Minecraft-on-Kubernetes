@@ -2,69 +2,65 @@
 description: プロジェクト進捗管理
 ---
 
-# Minecraft Hybrid Cloud Infrastructure (Minecraft_java_k3s)
+# Minecraft Hybrid Cloud Infrastructure (Minecraft-on-Kubernetes)
 
 ## 概要
 
-本プロジェクトは、GCP (GCE) とオンプレミス (k3s) を Tailscale VPN で接続して構築された、Minecraft (Java版 / Bedrock版) のハイブリッドクラウド構成のリポジトリです。
-2026-05-03 に GKE → GCE 移行を完了し、月額 ¥19,700 → ¥3,680（81% 削減）を達成済み。
+GCP (GCE) とオンプレミス (k3s) を Tailscale VPN で接続した、Minecraft (Java版 / Bedrock版) のハイブリッドクラウド構成リポジトリ。
+アーキテクチャの一次情報はリポジトリ直下の `README.md` と `Documents/Mermaids/*.mermaid`。
 
 ## アーキテクチャ構成
 
-### 1. GCP / GCE (フロントエンド・プロキシ)
+### 1. GCE 入口: mc-proxy（`Terraform/gce.tf` / `gce/`）
 
-**VM仕様:** `mc-proxy-1` (e2-medium / 4GB RAM, pd-balanced 20GB, asia-northeast1-b)
-**静的IP:** `35.200.78.252`
+- **Managed Instance Group** `mc-proxy-mig`（size=1、TCP:25565 ヘルスチェックでオートヒーリング）
+  - インスタンス名は動的（`mc-proxy-xxxx`）。`mc-proxy-1` という固定名は存在しない
+  - e2-micro / pd-balanced 20GB / asia-northeast1-b / 静的IP `35.200.78.252`
+- **Docker Compose（host network, `gce/compose.yaml`）**
+  - `socat-tcp`: Java TCP 25565 → `100.107.122.45:30065`（survival NodePort）
+  - `socat-bedrock`: Bedrock UDP 19132 → `100.107.122.45:19132`（fork 透過転送）
+  - `node-exporter` + `vmagent-host`: ホストメトリクスを mc-monitoring-1 へ remote_write
+- **tailscaled**: systemd (kernel mode)。hostname `gce-mc-proxy`（Tailscale IP は MIG 再作成で変わる）
+- cloud-init（`gce/cloud-init.yaml`）が起動時に本リポジトリ main の `gce/` を clone して配置する
 
-**Docker Compose コンポーネント (host network):**
-- `nginx-stream`: Java TCP 25565 を受け、localhost:25577 (Velocity) にプロキシ
-- `velocity`: Java Edition プロキシ (Velocity 3.4.0-SNAPSHOT)
-- `socat-bedrock`: Bedrock UDP 19132 を fork 透過転送（RakNet 互換）
+### 2. GCE 監視: mc-monitoring-1（`Terraform/monitoring.tf` / `gce/monitoring/`）
 
-**tailscaled:** systemd (kernel mode) で動作。`gce-mc-proxy: 100.124.222.31`
+- e2-small / Tailscale `gce-mc-monitoring`（100.121.113.37）
+- Docker Compose: VictoriaMetrics（:8428, 保持14日）/ VictoriaLogs（:9428, 保持30日）/
+  Vector aggregator（:9001）/ Grafana（:3000, Tailscale 経由のみ）/ vmalert / Alertmanager /
+  alertmanager-discord / discord-notifier（課金アラート Pub/Sub pull）
+- cloud-init（`gce/monitoring-cloud-init.yaml`）が起動時に `gce/monitoring/` を clone して配置する
 
-**管理アクセス:** IAP SSH `gcloud compute ssh mc-proxy-1 --zone=asia-northeast1-b --tunnel-through-iap`
+### 3. オンプレ k3s（`k8s/onprem/`）
 
-### 2. オンプレミス / k3s (バックエンド)
-
-**スペック:** Ryzen 5700G / 64GB メモリ。`k3s-worker` (100.107.122.45) と `k3s-monitoring` (Xeon E5) の2ノード構成。
-
-**ゲームバックエンド (minecraft namespace, 正常稼働中):**
-- `Lobby` (8Gi, NodePort :30067): プレイヤーの初回接続先 — Helm 管理
-- `Survival` (16Gi, NodePort :30065): Paper バニラサバイバル — Helm 管理
-- `Industry` (30Gi, NodePort :30066): NeoForge 工業 MOD — Helm 管理
-- `Bedrock BDS` (8Gi, hostPort :19132): Bedrock Edition 専用 — Deployment 管理
-
-**自動バックアップ:**
-- `bedrock-backup-cronjob`: 毎日 04:00 JST に MinIO へ tar.gz を自動アップロード
-
-**Tailscale Subnet Router:** k3s Service CIDR `10.43.0.0/16` を Tailscale に広告
-
-**Status Platform (未デプロイ):**
-- Flutter Web + Envoy + Kotlin API + CF Tunnel の構想のみ。k3s クラスター上に未適用
-
-### 3. 監視 (k3s-monitoring, Xeon E5, 100.105.190.5)
-
-- `monitoring-prometheus` namespace で Grafana / Prometheus が稼働中
-- mc-monitor サイドカー（各 Minecraft Pod の :8080/metrics）からメトリクス収集
+- Proxmox 上の VM `k3s-worker`（192.168.0.151 / Tailscale 100.107.122.45）による **単一ノード k3s**
+- **minecraft namespace（本リポジトリ管理）**
+  - `deploy-survival`: NeoForge 統合サーバー（29-30Gi, NodePort 30065）— Helm release `survival`（`k8s/onprem/helm/values-survival.yaml`）
+  - `deploy-bedrock`: Bedrock BDS（4-8Gi, hostPort 19132, LEVEL_NAME `sushi_server`）— `backend-servers.yaml`
+  - `bq-metrics`: VictoriaMetrics → BigQuery（15 秒解像度）— `40-bq-metrics.yaml`
+  - `mc-log-shipper` DaemonSet / survival の `log-shipper` サイドカー: ログイン/ログアウト → Pub/Sub `mc-raw-logs`
+  - `pubsub-list-subscriber`: Pub/Sub トリガーで `/list` を実行 — `43-pubsub-list-subscriber.yaml`
+  - `bedrock-backup-cronjob`: 毎日 04:00 JST に Bedrock ワールドを MinIO へ — `bds-backup-cronjob.yaml`
+  - `gcs-backup-cronjob`: 毎月1日 03:00 JST に Survival / Bedrock を GCS へ — `35-gcs-backup-cronjob.yaml`
+- **monitoring-prometheus namespace**: `vmagent`（1s scrape → mc-monitoring-1）/ `vector` DaemonSet（ログ → mc-monitoring-1）
+- **本リポジトリ管理外**（触らない）: `homepage` / `misskey` / `relay` / `minecraft-data` namespace
 
 ## 接続フロー
 
 ```
 Java:    Player → 35.200.78.252:25565/TCP
-         → nginx-stream → Velocity (:25577)
-         → Tailscale → k3s NodePort (:30065-30067)
+         → socat-tcp (GCE) → Tailscale → k3s NodePort :30065 (svc-survival)
 
 Bedrock: Player → 35.200.78.252:19132/UDP
-         → socat fork透過 → Tailscale → BDS hostPort (:19132)
+         → socat-bedrock (fork 透過) → Tailscale → BDS hostPort :19132
 ```
 
 ## Tailscale ネットワーク
 
 ```
-100.124.222.31  gce-mc-proxy      ← GCE VM
-100.107.122.45  k3s-worker-1      ← バックエンド
-100.105.190.5   k3s-monitoring-1  ← 監視ノード
+100.107.122.45  k3s-worker-1       ← オンプレ k3s
+100.121.113.37  gce-mc-monitoring  ← 監視 VM
+(動的)          gce-mc-proxy       ← 入口 VM（MIG 再作成で IP が変わる）
 ```
 
 ## 既知の問題・制約
@@ -74,18 +70,22 @@ Bedrock: Player → 35.200.78.252:19132/UDP
 - **Nginx Stream UDP 禁止**: ソースポート書き換えで RakNet セッションが破綻する
 - → **socat fork透過 + hostPort** が唯一の正解
 
+### Bedrock MOTD 欠落による接続不能
+- world の level.dat `LANBroadcast=0` で pong から MOTD が消え接続不能になる
+- vmalert `BedrockUnjoinableNoMOTD` で検知（`Documents/OperationPostmortem/postmortem-bedrock-motd-unjoinable.md`）
+
 ### Nasu Golem VV 問題（暫定対応中）
 - BDS 経由でサーバー側 world_resource_packs.json に登録すると Vibrant Visuals がグレーアウト
 - 暫定: world_resource_packs.json = [] でサーバー側から除外、クライアント側グローバルリソース配布
 
-### Proxmox tags（ignore_changes で抑制済み）
-- 両 Proxmox VM の state に `tags = " "`（空白）が残存
-- terraform plan は No changes。apply が必要な場合は Proxmox GUI でタグを手動削除してから実施
+### Terraform
+- state はローカル管理（`Terraform/terraform.tfstate`、リモートバックエンドなし）
+- `gce/cloud-init.yaml` を変更するとインスタンステンプレート再作成 → MIG が入口 VM を REPLACE（数分ダウン）
+- Proxmox VM の `tags` は provider が空白を返し続けるため `ignore_changes` で抑制済み
 
-## 直近のタスク（ロードマップ）
+## ロードマップ
 
-1. **Phase 2 バックアップ**: MinIO CronJob 完了済み。rclone + GCS 外部バックアップは未着手
-2. **Phase 3 Status Platform**: Kotlin API + Flutter Web + Envoy + CF Tunnel — 未着手
+README.md の「📝 ロードマップ」を参照。
 
 ## k8s 運用ルール
 
@@ -93,4 +93,4 @@ Bedrock: Player → 35.200.78.252:19132/UDP
 - **命名:** kebab-case。`<service>-<role>` 形式
 - **必須Labels:** `app.kubernetes.io/name`, `component`, `managed-by`, `env`
 - **PVC/CM/Secret:** `<service>-<用途>-pvc/cm/secret` 形式
-- **BDS 再起動:** replicas=0 → replicas=1 の順。`rollout restart` 禁止（旧 Pod と新 Pod 並走のリスク）
+- **Pod 再起動:** replicas=0 → replicas=1 の順。`rollout restart` 禁止（旧 Pod と新 Pod 並走による OOM のリスク）

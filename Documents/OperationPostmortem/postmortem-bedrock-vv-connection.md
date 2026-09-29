@@ -132,7 +132,7 @@ libc++abi: terminating due to uncaught exception of type gsl::narrowing_error: n
 
 ## 💡 4. 学び・改善点
 
-- [ ] **Nginx Stream は RakNet 非互換**: Bedrock Edition の UDP 転送に Nginx Stream を使ってはならない。socat (`fork,reuseaddr`) または専用 UDP フォワーダーを使用すること。これはポストモーテム「waterdogpe already connected.md」で L7 プロキシの排除は結論済みだったが、L4 プロキシ（Nginx Stream）のソースポート書き換え問題は新たな知見
+- [ ] **Nginx Stream は RakNet 非互換**: Bedrock Edition の UDP 転送に Nginx Stream を使ってはならない。socat (`fork,reuseaddr`) または専用 UDP フォワーダーを使用すること。これはポストモーテム「[postmortem-waterdogpe-already-connected.md](postmortem-waterdogpe-already-connected.md)」で L7 プロキシの排除は結論済みだったが、L4 プロキシ（Nginx Stream）のソースポート書き換え問題は新たな知見
 - [ ] **GCP Firewall の UDP 許可漏れ検知**: Terraform の Firewall 定義に UDP ルールが含まれているかの CI チェックを追加する
 - [ ] **Tailscale accept-routes の自動設定**: オンプレノードの Tailscale 設定を Ansible で管理し、`--accept-routes=true` が確実に適用されるようにする
 - [ ] **BDS リソースパックの VV 互換性**: BDS（サーバー側）はローカルクライアントと異なるリソースパック評価ロジックを持つ。VV 対応が必要なリソースパックは `world_resource_packs.json` ではなくクライアント側グローバルリソースパックとして配布する運用が安全

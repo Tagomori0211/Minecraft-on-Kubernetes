@@ -34,11 +34,13 @@ Minecraft ハイブリッドクラウドインフラの構成管理リポジト�
 | `.clinerules` | **メインルールファイル**（絶対ルール・運用ルールすべて） |
 | `.agents/` | エージェント細則（rules/）・ワークフロー手順（workflows/） |
 | `k8s/onprem/` | k3s クラスタ用 Kubernetes マニフェスト・Helm charts |
-| `gce/` | GCE `mc-proxy-1` の Docker Compose・cloud-init・systemd |
+| `gce/` | GCE 入口 `mc-proxy`（MIG）の Docker Compose・cloud-init・systemd。`gce/monitoring/` は監視 VM `mc-monitoring-1` 用（Grafana ダッシュボード JSON 含む） |
 | `Terraform/` | GCP・Proxmox リソースの IaC 定義 |
-| `mods/` | カスタム NeoForge MOD（Velocity Portals） |
-| `Documents/` | アーキテクチャ図・ポストモーテム・README |
-| `Grafana/` | ダッシュボード JSON |
+| `Ansible/` | k3s + Tailscale のインストール・マニフェスト適用 |
+| `Documents/` | アーキテクチャ図・ポストモーテム |
+| `.sh/` | 手動運用スクリプト（BDS へのメッセージ送信） |
+
+⚠️ `gce/` 配下のパスは GCE の cloud-init が起動時に main ブランチから clone して参照するため、移動・改名しないこと。
 
 ---
 
@@ -72,8 +74,8 @@ Minecraft ハイブリッドクラウドインフラの構成管理リポジト�
 # k3s Pod 状態確認
 ssh k3s-worker 'sudo kubectl get pods -n minecraft'
 
-# GCE VM へ IAP SSH
-ssh k3s-worker 'gcloud compute ssh mc-proxy-1 --zone=asia-northeast1-b --tunnel-through-iap'
+# GCE 入口 VM（MIG・インスタンス名は動的）へ IAP SSH
+ssh -t k3s-worker 'NAME=$(gcloud compute instances list --filter="name~^mc-proxy-" --format="value(name)") && gcloud compute ssh "$NAME" --zone=asia-northeast1-b --tunnel-through-iap'
 
 # Terraform
 cd Terraform && terraform plan -var-file=secret.tfvars

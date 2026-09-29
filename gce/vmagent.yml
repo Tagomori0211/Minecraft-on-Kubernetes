@@ -1,4 +1,4 @@
-# mc-proxy-1 ホストメトリクス収集（node-exporter → vmagent → mc-monitoring VictoriaMetrics）
+# mc-proxy ホストメトリクス収集（node-exporter → vmagent → mc-monitoring VictoriaMetrics）
 # MIG 再作成で Tailscale IP が変わるため push（remote_write）型で収集する。
 global:
   scrape_interval: 30s

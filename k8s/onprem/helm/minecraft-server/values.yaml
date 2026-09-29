@@ -40,7 +40,7 @@ server:
 
   # 追加 ConfigMap のマウント設定（mod config ファイル注入等）
   # 例:
-  #   - name: "lobby-playersync-cm"
+  #   - name: "survival-playersync-cm"
   #     mountPath: "/data/config/playersync.toml"
   #     subPath: "playersync.toml"
   extraConfigMaps: []

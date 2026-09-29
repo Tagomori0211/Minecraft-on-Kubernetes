@@ -60,7 +60,7 @@ subgraph Legend["GameTraffic Architecture"]
             SocatTCP["socat-tcp<br/>TCP4-LISTEN:25565,fork<br/>→ 100.107.122.45:30065"]
             SocatUDP["socat-bedrock<br/>UDP4-LISTEN:19132,fork<br/>→ 100.107.122.45:19132"]
         end
-        TailscaledGCE["🔐 tailscaled (systemd)<br/>gce-mc-proxy : 100.124.222.31"]
+        TailscaledGCE["🔐 tailscaled (systemd)<br/>gce-mc-proxy : IP 動的（MIG）"]
     end
 
     %% ───────────── Tailscale VPN ─────────────
@@ -157,7 +157,7 @@ flowchart LR
 
     subgraph GCP_Svc["GCP マネージドサービス"]
         PubSub["Pub/Sub<br>alerts<br>(pull subscription)"]
-        Budget["課金予算アラート<br>80%/90%/100%発火"]
+        Budget["課金予算アラート<br>90%/100%発火"]
         BQ[("BigQuery<br>minecraft_monitoring<br>server_metrics")]
     end
 
@@ -217,19 +217,19 @@ flowchart LR
 |--------|-----------|------|
 | **Terraform** | >= 1.5.0 | GCE / VPC / IAM / BigQuery / Pub/Sub / Budget / Proxmox VM |
 | **Ansible** | - | k3s + Tailscale インストール、Minecraft マニフェストデプロイ |
-| **Kubernetes** | k3s v1.31 | オンプレ Minecraft サーバーのコンテナオーケストレーション |
-| **Docker Compose** | - | mc-proxy-1: socat-tcp / socat-bedrock、mc-monitoring-1: VictoriaMetrics / VictoriaLogs / Vector / Grafana |
+| **Kubernetes** | k3s v1.34 | オンプレ Minecraft サーバーのコンテナオーケストレーション |
+| **Docker Compose** | - | mc-proxy: socat-tcp / socat-bedrock、mc-monitoring-1: VictoriaMetrics / VictoriaLogs / Vector / Grafana |
 
 ### クラウド・インフラ
 
 | サービス | 用途 |
 |---------|------|
-| **GCE: mc-proxy-1** (e2-micro) | socat-tcp（Java 25565）+ socat-bedrock（Bedrock 19132）の透過プロキシ |
+| **GCE: mc-proxy** (e2-micro / オートヒーリング MIG) | socat-tcp（Java 25565）+ socat-bedrock（Bedrock 19132）の透過プロキシ |
 | **GCE: mc-monitoring-1** (e2-small) | VictoriaMetrics + VictoriaLogs + Vector + Grafana + vmalert + Alertmanager + alertmanager-discord + discord-notifier（Tailscale 経由のみアクセス可） |
 | **BigQuery** | メトリクス時系列保存（k3s Pod が 15 秒解像度で INSERT）・課金 Export・コスト按分 VIEW |
 | **Cloud Storage** (Standard) | 月次ワールドバックアップ（lifecycle: 31日 ARCHIVE / 365日削除） |
 | **Pub/Sub** | 課金アラート（GCP Budget イベント駆動） |
-| **Cloud Billing Budget** | 80% / 90% / 100% でTopic配信 |
+| **Cloud Billing Budget** | 90% / 100% でTopic配信 |
 | **Secret Manager** | Tailscale auth-key / Discord Webhook URL / Player hash salt |
 | **Proxmox VE** | オンプレミス仮想化基盤（Ryzen 5700G / 64GB） |
 | **Tailscale** | メッシュVPN（ゼロトラスト） |
@@ -262,7 +262,7 @@ flowchart LR
     │
     │ 25565/TCP, 19132/UDP
     ▼
-[ GCE: mc-proxy-1 ]  ← 静的IP 35.200.78.252、24/365 公開エンドポイント
+[ GCE: mc-proxy (MIG) ]  ← 静的IP 35.200.78.252、24/365 公開エンドポイント
     │  Docker Compose: socat-tcp (Java) + socat-bedrock (Bedrock)
     │
     │ Tailscale 暗号化トンネル ≈ 20ms direct
@@ -293,7 +293,7 @@ Bedrock の RakNet は L7 プロキシで壊れるため、`fork` オプショ�
 
 | ホスト名 | Tailscale IP | 役割 |
 |---|---|---|
-| `gce-mc-proxy` | 100.124.222.31 | エッジプロキシ（公開エンドポイント） |
+| `gce-mc-proxy` | 動的（MIG 再作成で変わる） | エッジプロキシ（公開エンドポイント） |
 | `gce-mc-monitoring` | 100.121.113.37 | VictoriaMetrics / Grafana |
 | `k3s-worker` | 100.107.122.45 | ゲームサーバー Pod |
 
@@ -356,11 +356,11 @@ k3s 内の **BQ 挿入ジョブ Pod** が VictoriaMetrics（1 秒解像度）へ
 課金（GCP Budget）はメトリクスでなくイベント駆動のため、**mc-monitoring-1 上の discord-notifier (5 分 pull)** が Pub/Sub から取得して Discord 通知する（vmalert 対象外）。Cloud Functions push は Cloudflare の ASN ブロックで 403 になるため pull 構成。
 
 ```text
-[ Cloud Billing Budget ¥8,000/月 ] ─80/90/100%─▶ [ Pub/Sub ] ◀─pull(5min)─ [ discord-notifier ] ─▶ Discord
+[ Cloud Billing Budget ¥8,000/月 ] ─90/100%─▶ [ Pub/Sub ] ◀─pull(5min)─ [ discord-notifier ] ─▶ Discord
 ```
 
 - `Terraform/notifications.tf`: Pub/Sub topic + pull subscription + Budget + Secret Manager
-- 月次バックアップ完了時にも `gcs-backup-cronjob` が **署名付き URL（7日有効）** 付き embed を Discord に送信
+- 月次バックアップ完了時にも `gcs-backup-cronjob` が **署名付き URL（12時間有効）** 付き embed を Discord に送信
 
 ### 8. GCS Standard バックアップ
 
@@ -382,7 +382,7 @@ Secret Manager で以下を管理:
 
 | Secret 名 | 用途 |
 |---|---|
-| `tailscale-auth-key` | mc-proxy-1 / mc-monitoring-1 の cloud-init で `tailscale up` |
+| `tailscale-auth-key` | mc-proxy / mc-monitoring-1 の cloud-init で `tailscale up` |
 | `mc-discord-webhook-url` | 課金アラート・バックアップ通知の Webhook |
 | `mc-player-hash-salt` | プレイヤー XUID の SHA256 ハッシュ用 256-bit salt（`Terraform/privacy.tf`） |
 
@@ -435,7 +435,7 @@ Secret Manager で以下を管理:
 
 | 指標 | 結果 |
 |------|------|
-| **月間クラウド支出** | 約 ¥7,000（mc-proxy-1 + mc-monitoring-1 + BQ + Pub/Sub）|
+| **月間クラウド支出** | 約 ¥7,000（mc-proxy + mc-monitoring-1 + BQ + Pub/Sub）|
 | **グローバル遅延** | Tailscale Direct ≈ 20ms（東京リージョン経由）|
 | **デプロイ時間** | Terraform `apply` 約 5 分（VM プロビジョニング + cloud-init） |
 | **観測サイクル** | scrape 1秒（VM）/ BQ 集積 15秒 / Discord pull 5分 / 沈黙検知 5分 |
@@ -454,7 +454,7 @@ Secret Manager で以下を管理:
 - BigQuery `cost_analysis_view`（課金 Export × server_metrics 日次 JOIN）
 - GCS バックアップを STANDARD 化（毎月1日・lifecycle 31日 ARCHIVE / 365日削除）
 - 課金アラート Discord 通知（Pub/Sub pull subscription）
-- 月次バックアップ Discord 通知（署名付き URL 7日有効）
+- 月次バックアップ Discord 通知（署名付き URL 12時間有効）
 - プライバシー設計（player_hash_salt by Secret Manager）
 
 ### ✅ 完了（2026年6月）
