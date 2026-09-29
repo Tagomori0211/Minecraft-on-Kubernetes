@@ -28,7 +28,7 @@ Terraform/secret.tfvars
 .terraform/
 *.tfstate
 *.tfstate.*
-.terraform.lock.hcl
+# .terraform.lock.hcl は provider バージョン固定のためコミットする（CI と揃える）
 # plan ファイル（機密値を含む。tf-safe-apply の -out=tfplan も対象）
 tfplan
 *.tfplan

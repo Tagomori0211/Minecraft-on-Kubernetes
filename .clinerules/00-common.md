@@ -203,7 +203,7 @@ sleep+300s 経過しても進展がない場合、以下を自動実施:
 
 ## 🗂️ `Documents/` ディレクトリの凡例
 
-- `Mermaids/` — アーキテクチャ図（Mermaid / SVG）
+- `Mermaids/` — アーキテクチャ図（Mermaid ソース。README に同じ図を埋め込み。SVG 等の画像は置かない）
 - `OperationPostmortem/` — インシデントポストモーテム（障害記録。当時の記録のため内容は書き換えない）
 - `project_mastery.md` — トラフィックフロー・構成の要約
 - `DocMd/` / `Task_mds/` — ローカル専用（.gitignore 対象）
