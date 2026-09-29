@@ -58,6 +58,21 @@ variable "subnet_cidr" {
 }
 
 # ============================================================
+# mc-gateway Variables（gateway.tf）
+# ============================================================
+variable "gateway_machine_type" {
+  description = "mc-gateway のマシンタイプ。足りなければ e2-small に上げる（停止を伴う in-place 更新）"
+  type        = string
+  default     = "e2-micro"
+}
+
+variable "gateway_use_static_ip" {
+  description = "true で公開静的 IP 35.200.78.252 を mc-gateway に付ける（旧 mc-proxy MIG の削除後に切り替える）"
+  type        = bool
+  default     = false
+}
+
+# ============================================================
 # Proxmox Variables（オンプレ VM管理）
 # ============================================================
 variable "proxmox_api_url" {

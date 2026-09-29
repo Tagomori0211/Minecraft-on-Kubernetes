@@ -1,0 +1,136 @@
+# ============================================================
+# TAK Pipeline - mc-gateway 監視スタック（Docker Compose）
+# ============================================================
+# e2-micro（1GB）で socat・Status Platform と同居するため、全サービスに mem_limit を付け、
+# host network で docker-proxy を省く。外部公開は GCE ファイアウォールで遮断している
+# （開放は 25565/tcp・19132/udp・41641/udp・IAP SSH のみ）ため、以下は Tailscale 経由でのみ到達する。
+#
+#   :8428 VictoriaMetrics … k3s vmagent / bq-metrics（Tailscale）、Status Platform API（docker bridge）
+#   :9428 VictoriaLogs    … k3s Vector DaemonSet（Tailscale、Loki push）
+#   :3000 Grafana         … 管理者（Tailscale）
+#   127.0.0.1:8880 vmalert / 127.0.0.1:9093 Alertmanager … VM 内部のみ
+#
+# socat（入口）と課金通知は systemd で直接動かす（gce/gateway/systemd/）。
+# ============================================================
+
+services:
+  victoria-metrics:
+    image: victoriametrics/victoria-metrics:v1.115.0
+    container_name: victoria-metrics
+    restart: unless-stopped
+    network_mode: host
+    mem_limit: 256m
+    volumes:
+      - victoria-metrics-data:/victoria-metrics
+      - ./victoria-metrics/scrape.yml:/etc/victoria-metrics/scrape.yml:ro
+    command:
+      - "-storageDataPath=/victoria-metrics"
+      # 長期データは BigQuery 側（k3s bq-metrics）
+      - "-retentionPeriod=14d"
+      - "-httpListenAddr=:8428"
+      # ホストの node-exporter を直接 scrape する（vmagent 不要）
+      - "-promscrape.config=/etc/victoria-metrics/scrape.yml"
+      # キャッシュ上限は mem_limit に対する割合
+      - "-memory.allowedPercent=50"
+      - "-search.maxConcurrentRequests=4"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8428/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  victoria-logs:
+    image: victoriametrics/victoria-logs:v1.24.0-victorialogs
+    container_name: victoria-logs
+    restart: unless-stopped
+    network_mode: host
+    mem_limit: 128m
+    volumes:
+      - victoria-logs-data:/victoria-logs
+    command:
+      - "-storageDataPath=/victoria-logs"
+      - "-retentionPeriod=30d"
+      - "-httpListenAddr=:9428"
+      - "-memory.allowedPercent=50"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:9428/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  grafana:
+    image: grafana/grafana:11.6.1
+    container_name: grafana
+    restart: unless-stopped
+    network_mode: host
+    mem_limit: 192m
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    environment:
+      - GF_SERVER_HTTP_PORT=3000
+      - GF_SERVER_ROOT_URL=http://gce-mc-gateway:3000
+      - GF_SECURITY_ADMIN_USER=admin
+      # 初回ログイン後に必ず変更すること
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_ANALYTICS_REPORTING_ENABLED=false
+      - GF_ANALYTICS_CHECK_FOR_UPDATES=false
+      - GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES=false
+      - GF_NEWS_NEWS_FEED_ENABLED=false
+      # アラートは vmalert + Alertmanager が担当するため Grafana 側は無効化（メモリ削減）
+      - GF_UNIFIED_ALERTING_ENABLED=false
+      # VictoriaLogs 用 Grafana プラグイン（起動時に自動インストール）
+      - GF_INSTALL_PLUGINS=victoriametrics-logs-datasource
+    depends_on:
+      victoria-metrics:
+        condition: service_healthy
+
+  # ── vmalert（VictoriaMetrics に対しルール評価 → Alertmanager へ発火）──
+  vmalert:
+    image: victoriametrics/vmalert:v1.115.0
+    container_name: vmalert
+    restart: unless-stopped
+    network_mode: host
+    mem_limit: 64m
+    volumes:
+      - ./vmalert/rules:/etc/vmalert/rules:ro
+    command:
+      - "-datasource.url=http://127.0.0.1:8428"
+      - "-remoteWrite.url=http://127.0.0.1:8428"
+      - "-notifier.url=http://127.0.0.1:9093"
+      - "-rule=/etc/vmalert/rules/*.yml"
+      - "-evaluationInterval=30s"
+      - "-httpListenAddr=127.0.0.1:8880"
+    depends_on:
+      victoria-metrics:
+        condition: service_healthy
+      alertmanager:
+        condition: service_started
+
+  # ── Alertmanager（ネイティブ discord_configs で Discord へ通知）──
+  # v0.27.0 は webhook_url_file だけを指定すると設定検証で失敗する不具合があるため v0.28.1 以上を使う
+  alertmanager:
+    image: prom/alertmanager:v0.28.1
+    container_name: alertmanager
+    restart: unless-stopped
+    network_mode: host
+    mem_limit: 64m
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      # Discord webhook URL（cloud-init が Secret Manager から生成、nobody 読取専用）
+      - ./secrets/discord_webhook:/etc/alertmanager/discord_webhook:ro
+      - alertmanager-data:/alertmanager
+    command:
+      - "--config.file=/etc/alertmanager/alertmanager.yml"
+      - "--storage.path=/alertmanager"
+      - "--web.listen-address=127.0.0.1:9093"
+      # 単体運用のためクラスタ（gossip）を無効化
+      - "--cluster.listen-address="
+
+volumes:
+  victoria-metrics-data:
+  victoria-logs-data:
+  grafana-data:
+  alertmanager-data:

@@ -1,0 +1,168 @@
+#cloud-config
+# ============================================================
+# TAK Pipeline - mc-gateway 初期セットアップ（GCE 単体 VM）
+# ============================================================
+# 入口（socat）・監視スタック・Status Platform（tagomori-app）を 1 台（e2-micro）に集約する。
+# 実行内容（初回起動時のみ）:
+#   1. Docker / Tailscale / socat / node-exporter のインストール、swap 2GB
+#   2. Secret Manager の tailscale-auth-key で tailscale up（hostname: gce-mc-gateway）
+#   3. 本リポジトリ main の gce/gateway/ を /opt/mc-gateway に配置
+#   4. Alertmanager 用 Discord webhook を Secret Manager から生成
+#   5. systemd: socat（Java / Bedrock）・課金通知・監視スタック（docker compose）を起動
+#   6. OS Login ユーザーを SSH 時に docker グループへ追加（Status Platform の CI デプロイ用）
+#
+# 前提:
+#   - VM の SA（mc-proxy-sa）に Secret Manager 読取権限・billing-alerts-gce-pull の subscriber 権限
+#   - Secret Manager: tailscale-auth-key（有効期限内の再利用可能キー）/ mc-discord-webhook-url
+#   - Status Platform 本体（~/app）は cloud-observability-gateway リポジトリの CI が配置する
+#
+# ⚠️ このファイルは Terraform/gateway.tf が user-data に埋め込む。変更しても稼働中の VM には
+#    反映されない（再作成時のみ）。稼働中 VM への反映は /opt/mc-gateway の更新で行う。
+# ============================================================
+
+package_update: true
+package_upgrade: false
+
+# Docker / Tailscale の APT リポジトリ
+apt:
+  sources:
+    docker.list:
+      source: "deb [arch=amd64 signed-by=$KEY_FILE] https://download.docker.com/linux/ubuntu noble stable"
+      keyid: 9DC858229FC7DD38854AE2D88D81803C0EBFCD88
+    tailscale.list:
+      source: "deb [signed-by=$KEY_FILE] https://pkgs.tailscale.com/stable/ubuntu noble main"
+      keyid: 2596A99EAAB33821893C0A79458CA832957F5868
+
+packages:
+  - docker-ce
+  - docker-ce-cli
+  - containerd.io
+  - docker-buildx-plugin
+  - docker-compose-plugin
+  - tailscale
+  - socat
+  - git
+  - jq
+
+write_files:
+  # Docker のログローテーション
+  - path: /etc/docker/daemon.json
+    permissions: "0644"
+    content: |
+      {
+        "log-driver": "json-file",
+        "log-opts": { "max-size": "10m", "max-file": "3" }
+      }
+
+  # journald の上限（20GB ディスク・1GB メモリ向け）
+  - path: /etc/systemd/journald.conf.d/size.conf
+    permissions: "0644"
+    content: |
+      [Journal]
+      SystemMaxUse=200M
+      RuntimeMaxUse=32M
+
+  # node-exporter は 127.0.0.1 のみで待受（VictoriaMetrics が直接 scrape）
+  - path: /etc/default/prometheus-node-exporter
+    permissions: "0644"
+    content: |
+      ARGS="--web.listen-address=127.0.0.1:9100"
+
+  # e2-micro（1GB）向けに 2GB の swap を確保
+  - path: /usr/local/bin/setup-swap.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      set -e
+      if [[ ! -f /swap.img ]]; then
+        fallocate -l 2G /swap.img
+        chmod 600 /swap.img
+        mkswap /swap.img
+        swapon /swap.img
+        echo "/swap.img none swap sw 0 0" >> /etc/fstab
+      fi
+
+  # Tailscale 起動（idempotent: 既に Running なら skip）
+  - path: /usr/local/bin/tailscale-up.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+      if tailscale status --peers=false --json 2>/dev/null | jq -e '.BackendState=="Running"' > /dev/null; then
+        echo "[tailscale-up] 既に Running 状態のため skip"
+        exit 0
+      fi
+      AUTH_KEY="$(gcloud secrets versions access latest --secret=tailscale-auth-key)"
+      tailscale up \
+        --auth-key="${AUTH_KEY}" \
+        --hostname=gce-mc-gateway \
+        --accept-routes \
+        --ssh
+      echo "[tailscale-up] Tailscale up 完了: $(tailscale ip -4)"
+
+  # Alertmanager（nobody で動作）が読む Discord webhook を Secret Manager から生成
+  - path: /usr/local/bin/fetch-gateway-secrets.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+      install -d -m 0755 /opt/mc-gateway/secrets
+      umask 077
+      gcloud secrets versions access latest --secret=mc-discord-webhook-url \
+        > /opt/mc-gateway/secrets/discord_webhook
+      chown 65534:65534 /opt/mc-gateway/secrets/discord_webhook
+      chmod 0400 /opt/mc-gateway/secrets/discord_webhook
+      echo "[fetch-gateway-secrets] discord_webhook を配置しました"
+
+  # OS Login ユーザーは cloud-init 時点では存在しないため、SSH の open_session で docker グループへ追加する
+  # （Status Platform の CI は 2 回目の SSH から docker を使う）。usermod は OS Login ユーザーに使えないため /etc/group を直接編集する
+  - path: /usr/local/bin/add-oslogin-docker-group.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      [ "$PAM_TYPE" = "open_session" ] || exit 0
+      if ! grep -qE "^docker:[^:]*:[^:]*:.*\b${PAM_USER}\b" /etc/group 2>/dev/null; then
+        if grep -qE "^docker:[^:]*:[^:]*:$" /etc/group 2>/dev/null; then
+          sed -i "s/^docker:\([^:]*:[^:]*\):$/docker:\1:${PAM_USER}/" /etc/group
+        else
+          sed -i "s/^docker:\([^:]*:[^:]*:.*\)$/docker:\1,${PAM_USER}/" /etc/group
+        fi
+      fi
+
+runcmd:
+  - /usr/local/bin/setup-swap.sh
+  - systemctl restart systemd-journald
+  - systemctl restart docker
+  - systemctl enable docker
+
+  # 1GB で不要な常駐を止める（VM Manager / マルチパスは未使用）
+  - systemctl disable --now google-osconfig-agent || true
+  - systemctl disable --now multipathd.socket multipathd || true
+
+  # Tailscale ログイン（Secret Manager 経由）
+  - systemctl enable --now tailscaled
+  - /usr/local/bin/tailscale-up.sh
+
+  # node-exporter（推奨パッケージの textfile collector 群は入れない。/etc/default は上で配置済み）
+  - DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends -o Dpkg::Options::=--force-confold prometheus-node-exporter
+
+  # mc-gateway 配置：リポジトリから gce/gateway/ を取得
+  - git clone --depth=1 https://github.com/Tagomori0211/Minecraft-on-Kubernetes.git /tmp/repo
+  - mkdir -p /opt/mc-gateway
+  - cp -r /tmp/repo/gce/gateway/. /opt/mc-gateway/
+  - rm -rf /tmp/repo
+  - /usr/local/bin/fetch-gateway-secrets.sh
+
+  # systemd: 入口 socat（Java / Bedrock）・課金通知・監視スタック
+  - install -m 0644 /opt/mc-gateway/systemd/*.service /etc/systemd/system/
+  - systemctl daemon-reload
+  - systemctl enable --now mc-socat-java.service mc-socat-bedrock.service mc-discord-notifier.service
+  - systemctl enable --now mc-monitoring.service
+
+  # Status Platform の CI（OS Login）用
+  - echo "session optional pam_exec.so /usr/local/bin/add-oslogin-docker-group.sh" >> /etc/pam.d/sshd
+
+  # 起動確認ログ
+  - systemctl --no-pager status mc-socat-java mc-socat-bedrock mc-discord-notifier > /var/log/mc-gateway-bootstrap.log 2>&1 || true
+  - docker compose -f /opt/mc-gateway/compose.yaml ps >> /var/log/mc-gateway-bootstrap.log 2>&1 || true
+  - tailscale ip -4 >> /var/log/mc-gateway-bootstrap.log 2>&1 || true

@@ -4,7 +4,8 @@ datasources:
   - name: VictoriaMetrics
     uid: victoria-metrics
     type: prometheus
-    url: http://victoria-metrics:8428
+    # host network で同居しているため localhost 経由
+    url: http://127.0.0.1:8428
     isDefault: true
     access: proxy
     editable: false

@@ -1,10 +1,9 @@
 # ============================================================
 # Alertmanager 設定（vmalert → Alertmanager → Discord）
 # ============================================================
-# Discord はネイティブ receiver が無く、/slack 互換エンドポイントは attachment を
-# 弾く(400)ため、alertmanager-discord ブリッジ経由で Discord ネイティブ embed に
-# 変換する。webhook URL は機密のためブリッジ側の DISCORD_WEBHOOK env（compose の
-# .env、cloud-init が Secret Manager から生成）で渡す。
+# Alertmanager v0.25+ のネイティブ discord_configs で通知する（ブリッジ不要）。
+# webhook URL は機密のため webhook_url_file（v0.26+）で渡す。ファイルは cloud-init が
+# Secret Manager の mc-discord-webhook-url から /opt/mc-gateway/secrets/discord_webhook に生成する。
 # ============================================================
 global:
   resolve_timeout: 5m
@@ -25,8 +24,8 @@ route:
 
 receivers:
   - name: discord
-    webhook_configs:
-      - url: http://alertmanager-discord:9094
+    discord_configs:
+      - webhook_url_file: /etc/alertmanager/discord_webhook
         send_resolved: true
   # 通知を出さない受信先（Discord 抑止用）
   - name: 'null'

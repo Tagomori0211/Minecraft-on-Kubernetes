@@ -1,0 +1,17 @@
+[Unit]
+Description=Minecraft Java entrance (socat TCP 25565 -> k3s-worker NodePort 30065 via Tailscale)
+Documentation=https://github.com/Tagomori0211/Minecraft-on-Kubernetes
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+# 接続ごとに fork して k3s-worker（Tailscale 100.107.122.45）の svc-survival NodePort へ透過転送
+ExecStart=/usr/bin/socat TCP4-LISTEN:25565,fork,reuseaddr TCP4:100.107.122.45:30065
+Restart=always
+RestartSec=2
+DynamicUser=yes
+# メモリ逼迫時も入口は最後まで残す（監視・Status Platform を先に OOM 対象にする）
+OOMScoreAdjust=-900
+
+[Install]
+WantedBy=multi-user.target

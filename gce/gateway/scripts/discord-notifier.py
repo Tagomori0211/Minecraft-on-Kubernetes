@@ -1,7 +1,7 @@
 """
 GCP 課金アラート → Discord 通知スクリプト
 
-mc-monitoring-1 上の Docker Compose サービス discord-notifier として常駐し、5 分ごとに
+mc-gateway 上の systemd サービス mc-discord-notifier として常駐し、5 分ごとに
 Pub/Sub Pull サブスクリプション billing-alerts-gce-pull をポーリングする。
 GCP Budget アラート（alertThresholdExceeded）を Discord に embed 通知して ACK する。
 （オンプレ沈黙などメトリクス系アラートは vmalert + Alertmanager が担当する）
@@ -10,7 +10,7 @@ GCP Budget アラート（alertThresholdExceeded）を Discord に embed 通知�
           月初に月文字列が変わったら自動リセット。
           Discord 送信に成功した時点で通知済みとして記録し、失敗時は再配信で再試行する。
 
-認証: GCE VM (mc-monitoring-1) の mc-monitoring-sa ADC（メタデータサーバー経由）
+認証: GCE VM (mc-gateway) の mc-proxy-sa ADC（メタデータサーバー経由）
       → Pub/Sub subscriber + Secret Manager (webhook) アクセス権が必要（Terraform/notifications.tf）
 """
 import base64

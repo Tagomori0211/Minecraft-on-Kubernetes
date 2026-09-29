@@ -4,7 +4,8 @@ datasources:
   - name: VictoriaLogs
     uid: victoria-logs
     type: victoriametrics-logs-datasource
-    url: http://victoria-logs:9428
+    # host network で同居しているため localhost 経由
+    url: http://127.0.0.1:9428
     access: proxy
     isDefault: false
     editable: false

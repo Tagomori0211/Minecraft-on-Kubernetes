@@ -102,6 +102,14 @@ resource "google_pubsub_subscription_iam_member" "mc_monitoring_billing_subscrib
   member       = "serviceAccount:${google_service_account.mc_monitoring_sa.email}"
 }
 
+# mc-gateway（SA: mc-proxy-sa）の課金通知 mc-discord-notifier が pull する
+resource "google_pubsub_subscription_iam_member" "mc_gateway_billing_subscriber" {
+  project      = var.project_id
+  subscription = google_pubsub_subscription.billing_alerts_gce.name
+  role         = "roles/pubsub.subscriber"
+  member       = "serviceAccount:${google_service_account.mc_proxy_sa.email}"
+}
+
 # NOTE: オンプレ沈黙検知は vmalert(OnpremSilence) + Alertmanager へ移行したため
 #       mc-monitoring-sa の Pub/Sub publisher 付与は廃止（discord-notifier は
 #       課金アラートの subscriber のみ必要）。

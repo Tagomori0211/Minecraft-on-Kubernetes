@@ -1,0 +1,17 @@
+[Unit]
+Description=Minecraft Bedrock entrance (socat UDP 19132 -> k3s-worker hostPort 19132 via Tailscale)
+Documentation=https://github.com/Tagomori0211/Minecraft-on-Kubernetes
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+# RakNet は L7 / Nginx UDP プロキシで壊れるため、fork でクライアントごとに独立ソケットを作り透過転送する
+ExecStart=/usr/bin/socat UDP4-LISTEN:19132,fork,reuseaddr UDP4:100.107.122.45:19132
+Restart=always
+RestartSec=2
+DynamicUser=yes
+# メモリ逼迫時も入口は最後まで残す（監視・Status Platform を先に OOM 対象にする）
+OOMScoreAdjust=-900
+
+[Install]
+WantedBy=multi-user.target

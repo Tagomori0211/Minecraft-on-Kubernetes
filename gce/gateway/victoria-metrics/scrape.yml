@@ -1,0 +1,19 @@
+# mc-gateway のホストメトリクス（ネイティブ node-exporter を VictoriaMetrics が直接 scrape）
+# node-exporter は 127.0.0.1:9100 のみで待受（cloud-init の /etc/default/prometheus-node-exporter）。
+global:
+  scrape_interval: 30s
+
+scrape_configs:
+  - job_name: node
+    static_configs:
+      - targets: ['127.0.0.1:9100']
+        labels:
+          instance: mc-gateway
+          role: gateway
+          # マシンタイプを変えたら合わせて更新する（gce-instances-overview の情報テーブル用）
+          machine_type: e2-micro
+    # gce-instances-overview ダッシュボードで使う系列と swap だけを残す
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: node_(cpu_seconds_total|memory_(MemAvailable|MemTotal|SwapTotal|SwapFree)_bytes|filesystem_(avail|size)_bytes|network_(receive|transmit)_bytes_total|load1|boot_time_seconds|uname_info)
+        action: keep

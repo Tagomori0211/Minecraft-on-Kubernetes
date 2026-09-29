@@ -1,0 +1,16 @@
+[Unit]
+Description=GCP billing alert -> Discord notifier (Pub/Sub pull)
+Documentation=https://github.com/Tagomori0211/Minecraft-on-Kubernetes
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# 標準ライブラリのみ。認証は GCE メタデータサーバー（VM の SA: mc-proxy-sa）
+ExecStart=/usr/bin/python3 /opt/mc-gateway/scripts/discord-notifier.py
+Environment=PYTHONUNBUFFERED=1
+Restart=always
+RestartSec=30
+DynamicUser=yes
+
+[Install]
+WantedBy=multi-user.target
