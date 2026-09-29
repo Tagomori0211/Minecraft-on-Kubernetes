@@ -47,27 +47,9 @@ data:
           - targets: ['svc-bedrock.minecraft.svc.cluster.local:8080']
             labels: { location: onprem, component: bedrock }
 
-      # ── Kubernetes Nodes ───────────────────────────────────
-      - job_name: 'kubernetes-nodes'
-        scrape_interval: 30s
-        scheme: https
-        tls_config:
-          ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
-          insecure_skip_verify: true
-        bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
-        kubernetes_sd_configs:
-          - role: node
-        relabel_configs:
-          - action: labelmap
-            regex: __meta_kubernetes_node_label_(.+)
-          - target_label: __address__
-            replacement: kubernetes.default.svc:443
-          - source_labels: [__meta_kubernetes_node_name]
-            regex: (.+)
-            target_label: __metrics_path__
-            replacement: /api/v1/nodes/${1}/proxy/metrics
-
       # ── cAdvisor ──────────────────────────────────────────
+      # kubelet 自体の指標（旧 kubernetes-nodes ジョブ、約 3.7 万系列）は
+      # どのダッシュボード・アラートからも参照されていないため収集しない。
       - job_name: 'kubernetes-cadvisor'
         scrape_interval: 30s
         scheme: https
@@ -88,6 +70,17 @@ data:
             replacement: /api/v1/nodes/${1}/proxy/metrics/cadvisor
           - target_label: location
             replacement: onprem
+        # 参照されている系列だけを残す（Grafana ダッシュボード / Status Platform の API）。
+        # 収集先 VM（e2-micro）の負荷を抑えるため、他 namespace のコンテナ系列は送らない。
+        metric_relabel_configs:
+          - source_labels: [__name__]
+            regex: container_cpu_usage_seconds_total|container_memory_working_set_bytes|container_fs_usage_bytes|container_fs_limit_bytes|container_spec_memory_limit_bytes|container_start_time_seconds|machine_cpu_cores|machine_memory_bytes
+            action: keep
+          # machine_* / ノード全体（id="/"）/ minecraft namespace のみ
+          - source_labels: [__name__, id, namespace]
+            separator: ;
+            regex: machine_.*;.*;.*|[^;]+;/;.*|[^;]+;[^;]*;minecraft
+            action: keep
 
 ---
 # ============================================================
