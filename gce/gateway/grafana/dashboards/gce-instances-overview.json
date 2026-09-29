@@ -2,7 +2,7 @@
   "annotations": { "list": [] },
   "editable": true,
   "graphTooltip": 1,
-  "title": "GCE インスタンス概況 (mc-proxy / mc-monitoring)",
+  "title": "GCE インスタンス概況 (mc-gateway)",
   "uid": "gce-instances",
   "tags": ["gce", "infra"],
   "timezone": "browser",

@@ -34,7 +34,7 @@ Minecraft ハイブリッドクラウドインフラの構成管理リポジト�
 | `.clinerules` | **メインルールファイル**（絶対ルール・運用ルールすべて） |
 | `.agents/` | エージェント細則（rules/）・ワークフロー手順（workflows/） |
 | `k8s/onprem/` | k3s クラスタ用 Kubernetes マニフェスト・Helm charts |
-| `gce/` | GCE 入口 `mc-proxy`（MIG）の Docker Compose・cloud-init・systemd。`gce/monitoring/` は監視 VM `mc-monitoring-1` 用（Grafana ダッシュボード JSON 含む） |
+| `gce/` | GCE の cloud-init・Docker Compose・systemd。`gce/gateway/` は統合 VM `mc-gateway` 用（Grafana ダッシュボード JSON 含む）。直下の旧入口 `mc-proxy`（MIG）用ファイルは切替完了後に削除 |
 | `Terraform/` | GCP・Proxmox リソースの IaC 定義 |
 | `Ansible/` | k3s + Tailscale のインストール・マニフェスト適用 |
 | `Documents/` | アーキテクチャ図・ポストモーテム |
