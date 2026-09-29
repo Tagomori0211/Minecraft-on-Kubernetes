@@ -2,10 +2,11 @@
 # Pub/Sub list コマンド サブスクライバー
 # ============================================================
 # トリガー: minecraft-list-trigger topic → mc-list-sub subscription
-# 受信 JSON: { command: "list", server: "survival"|"bedrock"|"all", ... }
+# 受信 JSON: { command: "list", server: "bedrock"|"all", ... }
 # 実行:
-#   survival → kubectl exec -c minecraft -- rcon-cli list
 #   bedrock  → kubectl exec -c bedrock  -- send-command list
+#   ※ Java(survival) は休眠中のため対象外。survival 宛ては未知のサーバーとして ack・破棄する
+#     （再開時は SERVER_CONFIG に 'survival': ('minecraft', ['rcon-cli', 'list']) を戻す）
 # 認証: gcs-backup-credentials Secret（user ADC）を流用
 # ============================================================
 
@@ -101,8 +102,8 @@ data:
     NAMESPACE    = 'minecraft'
 
     # server 値 → (コンテナ名, 実行コマンド)
+    # Java(survival) は休眠中のため登録しない（exec 失敗 → nack の再配信ループを防ぐ）
     SERVER_CONFIG = {
-        'survival': ('minecraft', ['rcon-cli',     'list']),
         'bedrock':  ('bedrock',   ['send-command', 'list']),
     }
 

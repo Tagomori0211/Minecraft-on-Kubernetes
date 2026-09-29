@@ -271,6 +271,8 @@ flowchart LR
     └─ Survival（NeoForge 統合）/ Bedrock BDS（合計 46Gi JVM Request）
 ```
 
+> **Note (2026-09-30)**: Java（Survival）は休眠中。Deployment は削除し、ワールドは PVC（`k8s/onprem/survival-pvc-dormant.yaml`）で保持している。再開は Helm で PVC を引き継いで行う。
+
 「公開・薄いプロキシ層、可観測性の高い監視ノード」と「重量級ワークロード」を明確に分離。クラウド側は VM 2台（エントランス + 監視）に抑え、メモリ集約型のゲームサーバーをオンプレに寄せている。Velocity / nginx-stream は撤去済みで、Java は socat-tcp が NodePort へ直結する。
 
 ### 2. Bedrock UDP の透過転送（socat）

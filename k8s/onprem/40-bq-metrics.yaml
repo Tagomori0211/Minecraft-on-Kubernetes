@@ -65,12 +65,13 @@ data:
     # 挿入間隔（秒）。mermaid 設計値 = 15秒解像度。
     SAMPLE_INTERVAL = int(os.environ.get("SAMPLE_INTERVAL_SEC", "15"))
 
-    # minecraft_status_* から 15 秒平均/最大/最小を PromQL で集計する
+    # minecraft_status_* から 15 秒平均/最大/最小を PromQL で集計する。
+    # Java / Bedrock の両方が対象（server カラムは vmagent の component ラベル）。
     METRICS = [
-        "avg_over_time(minecraft_status_players_online_count{server_edition='java'}[15s])",
-        "max_over_time(minecraft_status_players_online_count{server_edition='java'}[15s])",
-        "avg_over_time(minecraft_status_response_time_seconds{server_edition='java'}[15s])",
-        "min_over_time(minecraft_status_healthy{server_edition='java'}[15s])",
+        "avg_over_time(minecraft_status_players_online_count[15s])",
+        "max_over_time(minecraft_status_players_online_count[15s])",
+        "avg_over_time(minecraft_status_response_time_seconds[15s])",
+        "min_over_time(minecraft_status_healthy[15s])",
     ]
     METRIC_NAMES = [
         "mc:players_online:avg15s",

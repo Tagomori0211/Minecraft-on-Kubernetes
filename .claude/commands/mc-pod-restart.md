@@ -12,7 +12,7 @@ description: minecraft Pod 安全再起動（OOM回避・replicas=0→1 厳守�
 
 | Release | Deployment | label `app=` | values | コンテナ数 |
 |---|---|---|---|---|
-| survival | deploy-survival | mc-survival | values-survival.yaml | 3（minecraft / mc-monitor / log-shipper） |
+| survival（**休眠中**・2026-09-30〜 Deployment なし） | deploy-survival | mc-survival | values-survival.yaml | 3（minecraft / mc-monitor / log-shipper） |
 | bedrock | deploy-bedrock | mc-bedrock | （Helmなし・`backend-servers.yaml` を kubectl 管理）| 2（bedrock / mc-monitor） |
 
 ## 手順（survival）

@@ -1,0 +1,34 @@
+# ============================================================
+# Java(survival) 休眠中のワールド保持用 PVC（2026-09-30〜）
+# ============================================================
+# helm uninstall survival の後、同じ PV（reclaimPolicy: Retain）へ再バインドしたもの。
+# Deployment / Service は削除済みで、ワールドデータのみを保持している。
+#
+# Java 再開時:
+#   helm upgrade --install survival ./minecraft-server -f values-survival.yaml -n minecraft
+#   → 下記の meta.helm.sh/* アノテーションと managed-by=Helm ラベルにより Helm がこの PVC を採用する。
+#   採用後はこのファイルを削除し、35-gcs-backup-cronjob.yaml の JAVA_SERVERS に survival を戻す。
+# ============================================================
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: pvc-survival
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/name: minecraft-java
+    app.kubernetes.io/component: survival
+    # Helm が既存リソースを採用する条件（"Helm" 固定）
+    app.kubernetes.io/managed-by: Helm
+    env: prod
+  annotations:
+    meta.helm.sh/release-name: survival
+    meta.helm.sh/release-namespace: minecraft
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: local-path
+  # 旧 pvc-survival のデータを持つ PV（Retain）に固定バインドする
+  volumeName: pvc-1828c1cd-7031-47cd-ab7a-63815890659a
+  resources:
+    requests:
+      storage: 30Gi

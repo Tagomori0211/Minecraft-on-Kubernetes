@@ -67,7 +67,11 @@ data:
     NAMESPACE="minecraft"
     DATE_STR=$(date +%Y-%m-%d)
     BUCKET="gs://sushiski-mc-backups"
-    ALL_DEPLOYS="deploy-survival deploy-bedrock"
+    # 対象 Java サーバー（空白区切り）。Java(survival) は休眠中のため空。
+    # 再開時は "survival" を設定する（pvc-survival は保持しており /data/survival マウントも残している）。
+    JAVA_SERVERS=""
+    ALL_DEPLOYS="deploy-bedrock"
+    for S in ${JAVA_SERVERS}; do ALL_DEPLOYS="${ALL_DEPLOYS} deploy-${S}"; done
 
     # kubectl インストール（google/cloud-sdk:slim には含まれないため取得）
     echo "→ kubectl インストール中..."
@@ -184,24 +188,24 @@ data:
     }
 
     echo "→ メンテナンスアナウンスを送信中..."
-    for S in survival bedrock; do
+    for S in ${JAVA_SERVERS} bedrock; do
       announce_server "${S}" "say [月次バックアップ] 35秒後にサーバーを停止します"
     done
     sleep 5
 
-    for S in survival bedrock; do
+    for S in ${JAVA_SERVERS} bedrock; do
       announce_server "${S}" "say 30秒後にサーバーは再起動します"
     done
     sleep 25
 
-    for S in survival bedrock; do
+    for S in ${JAVA_SERVERS} bedrock; do
       announce_server "${S}" "say 再起動します"
     done
     sleep 5
 
     # グレースフルストップ
     echo "→ グレースフルストップを送信中..."
-    for S in survival; do
+    for S in ${JAVA_SERVERS}; do
       POD=$(kubectl get pods -n "${NAMESPACE}" -l "app.kubernetes.io/component=${S}" \
         --no-headers -o custom-columns=':metadata.name' 2>/dev/null | head -1)
       [ -n "${POD}" ] && kubectl exec -n "${NAMESPACE}" "${POD}" -c minecraft -- rcon-cli "stop" 2>/dev/null || true
@@ -239,7 +243,7 @@ data:
     # ============================================================
     # Java バックアップ（サーバーごとに個別アーカイブ）
     # ============================================================
-    for SERVER in survival; do
+    for SERVER in ${JAVA_SERVERS}; do
       TAR_FILE="/tmp/${DATE_STR}_${SERVER}.tar.gz"
       echo "→ Java/${SERVER} バックアップ作成中: $(basename ${TAR_FILE})"
 
@@ -272,9 +276,9 @@ data:
     # GCS アップロード + signed URL 生成（12時間有効）
     # ============================================================
     echo "→ GCS にアップロード中 (${BUCKET})..."
-    for TAR_FILE in \
-      "/tmp/${DATE_STR}_BE.tar.gz" \
-      "/tmp/${DATE_STR}_survival.tar.gz"; do
+    UPLOAD_FILES=("/tmp/${DATE_STR}_BE.tar.gz")
+    for S in ${JAVA_SERVERS}; do UPLOAD_FILES+=("/tmp/${DATE_STR}_${S}.tar.gz"); done
+    for TAR_FILE in "${UPLOAD_FILES[@]}"; do
       if [ -s "${TAR_FILE}" ]; then
         FNAME=$(basename "${TAR_FILE}")
         gcloud storage cp "${TAR_FILE}" "${BUCKET}/${FNAME}"

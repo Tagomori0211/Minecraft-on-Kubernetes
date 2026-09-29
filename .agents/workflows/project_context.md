@@ -35,13 +35,17 @@ GCP (GCE) とオンプレミス (k3s) を Tailscale VPN で接続した、Minecr
 
 - Proxmox 上の VM `k3s-worker`（192.168.0.151 / Tailscale 100.107.122.45）による **単一ノード k3s**
 - **minecraft namespace（本リポジトリ管理）**
-  - `deploy-survival`: NeoForge 統合サーバー（29-30Gi, NodePort 30065）— Helm release `survival`（`k8s/onprem/helm/values-survival.yaml`）
   - `deploy-bedrock`: Bedrock BDS（4-8Gi, hostPort 19132, LEVEL_NAME `sushi_server`）— `backend-servers.yaml`
-  - `bq-metrics`: VictoriaMetrics → BigQuery（15 秒解像度）— `40-bq-metrics.yaml`
-  - `mc-log-shipper` DaemonSet / survival の `log-shipper` サイドカー: ログイン/ログアウト → Pub/Sub `mc-raw-logs`
-  - `pubsub-list-subscriber`: Pub/Sub トリガーで `/list` を実行 — `43-pubsub-list-subscriber.yaml`
+  - **Java（survival）は休眠中**（2026-09-30〜）: Helm release `survival` は削除済み。ワールドは
+    `pvc-survival`（PV は reclaimPolicy: Retain）で保持 — `survival-pvc-dormant.yaml`。
+    再開時は `helm upgrade --install survival ... -f values-survival.yaml` で PVC を採用し、
+    vmagent の survival ジョブ・GCS バックアップの `JAVA_SERVERS`・Pub/Sub の `SERVER_CONFIG` を戻す
+  - `bq-metrics`: VictoriaMetrics → BigQuery（15 秒解像度、Java / Bedrock 共通）— `40-bq-metrics.yaml`
+  - `mc-log-shipper` DaemonSet: ログイン/ログアウト → Pub/Sub `mc-raw-logs`
+  - `pubsub-list-subscriber`: Pub/Sub トリガーで `/list` を実行（現在は bedrock のみ）— `43-pubsub-list-subscriber.yaml`
   - `bedrock-backup-cronjob`: 毎日 04:00 JST に Bedrock ワールドを MinIO へ — `bds-backup-cronjob.yaml`
-  - `gcs-backup-cronjob`: 毎月1日 03:00 JST に Survival / Bedrock を GCS へ — `35-gcs-backup-cronjob.yaml`
+    （⚠️ 2026-09 時点で失敗中: mc クライアントの配布 URL が 410）
+  - `gcs-backup-cronjob`: 毎月1日 03:00 JST に Bedrock（と `JAVA_SERVERS`）を GCS へ — `35-gcs-backup-cronjob.yaml`
 - **monitoring-prometheus namespace**: `vmagent`（1s scrape → mc-monitoring-1）/ `vector` DaemonSet（ログ → mc-monitoring-1）
 - **本リポジトリ管理外**（触らない）: `homepage` / `misskey` / `relay` / `minecraft-data` namespace
 

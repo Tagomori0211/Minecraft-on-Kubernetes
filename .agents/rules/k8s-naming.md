@@ -32,7 +32,7 @@ description: Kubernetes / k3s マニフェスト作成・編集時のネーミ�
 labels:
   app.kubernetes.io/name: "<service-name>"
   app.kubernetes.io/component: "<role>"   # proxy / backend / monitoring / cronjob
-  app.kubernetes.io/managed-by: "kubectl" # or "helm"
+  app.kubernetes.io/managed-by: "kubectl" # Helm 管理は "Helm"（{{ .Release.Service }}。既存リソースの採用条件）
   env: "prod"                             # prod / dev / staging
 ```
 

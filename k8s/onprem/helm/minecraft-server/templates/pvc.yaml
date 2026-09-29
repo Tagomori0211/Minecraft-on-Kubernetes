@@ -6,8 +6,11 @@ metadata:
   labels:
     app.kubernetes.io/name: minecraft-java
     app.kubernetes.io/component: {{ .Values.server.name }}
-    app.kubernetes.io/managed-by: helm
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
     env: prod
+  annotations:
+    # helm uninstall でワールドデータを消さない（uninstall 後に残った PVC は再 install 時に採用される）
+    helm.sh/resource-policy: keep
 spec:
   accessModes:
     - ReadWriteOnce

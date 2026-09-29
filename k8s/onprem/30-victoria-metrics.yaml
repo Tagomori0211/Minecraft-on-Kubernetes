@@ -40,13 +40,8 @@ data:
 
     scrape_configs:
       # ── Minecraft サーバー（ClusterIP DNS 名）─────────────────
-      # lobby / mod は撤去済み（deploy-survival 統合・mermaid 準拠）。
-      # 現行は survival（NeoForge 統合）+ bedrock のみ。
-      - job_name: 'survival'
-        static_configs:
-          - targets: ['svc-survival.minecraft.svc.cluster.local:8080']
-            labels: { location: onprem, component: survival }
-
+      # Java(survival) は休眠中（2026-09-30 に Deployment 削除・PVC 保持）のため bedrock のみ。
+      # 再開時は survival ジョブ（svc-survival.minecraft.svc.cluster.local:8080）を戻す。
       - job_name: 'bedrock'
         static_configs:
           - targets: ['svc-bedrock.minecraft.svc.cluster.local:8080']

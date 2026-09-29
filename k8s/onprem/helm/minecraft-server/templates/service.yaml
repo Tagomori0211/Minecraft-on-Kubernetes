@@ -6,7 +6,7 @@ metadata:
   labels:
     app.kubernetes.io/name: minecraft-java
     app.kubernetes.io/component: {{ .Values.server.name }}
-    app.kubernetes.io/managed-by: helm
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
     env: prod
 spec:
   selector:
