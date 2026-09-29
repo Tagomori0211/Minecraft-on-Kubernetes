@@ -40,21 +40,12 @@ resource "google_secret_manager_secret" "discord_webhook_url" {
 }
 
 # mc-proxy-sa に discord_webhook_url の読み取り権限を付与
-# （backup CronJob が署名付き URL 通知に使用する）
+# （mc-gateway の Alertmanager・課金通知と、backup CronJob の署名付き URL 通知が使う）
 resource "google_secret_manager_secret_iam_member" "mc_proxy_webhook_access" {
   project   = var.project_id
   secret_id = google_secret_manager_secret.discord_webhook_url.secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.mc_proxy_sa.email}"
-}
-
-# mc-monitoring-sa に webhook 読み取り権限を付与
-# （監視系再構築で discord-notifier を mc-monitoring-1 へ移設したため）
-resource "google_secret_manager_secret_iam_member" "mc_monitoring_webhook_access" {
-  project   = var.project_id
-  secret_id = google_secret_manager_secret.discord_webhook_url.secret_id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = "serviceAccount:${google_service_account.mc_monitoring_sa.email}"
 }
 
 # ============================================================
@@ -93,15 +84,6 @@ resource "google_pubsub_subscription" "billing_alerts_gce" {
   })
 }
 
-# mc-monitoring-sa に Pull サブスクリプション Subscriber 権限を付与
-# （discord-notifier が mc-monitoring-1 で課金アラートを pull する）
-resource "google_pubsub_subscription_iam_member" "mc_monitoring_billing_subscriber" {
-  project      = var.project_id
-  subscription = google_pubsub_subscription.billing_alerts_gce.name
-  role         = "roles/pubsub.subscriber"
-  member       = "serviceAccount:${google_service_account.mc_monitoring_sa.email}"
-}
-
 # mc-gateway（SA: mc-proxy-sa）の課金通知 mc-discord-notifier が pull する
 resource "google_pubsub_subscription_iam_member" "mc_gateway_billing_subscriber" {
   project      = var.project_id
@@ -109,10 +91,6 @@ resource "google_pubsub_subscription_iam_member" "mc_gateway_billing_subscriber"
   role         = "roles/pubsub.subscriber"
   member       = "serviceAccount:${google_service_account.mc_proxy_sa.email}"
 }
-
-# NOTE: オンプレ沈黙検知は vmalert(OnpremSilence) + Alertmanager へ移行したため
-#       mc-monitoring-sa の Pub/Sub publisher 付与は廃止（discord-notifier は
-#       課金アラートの subscriber のみ必要）。
 
 # ============================================================
 # Billing Budget (90% + 100%)
