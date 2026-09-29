@@ -73,6 +73,11 @@ data:
     ALL_DEPLOYS="deploy-bedrock"
     for S in ${JAVA_SERVERS}; do ALL_DEPLOYS="${ALL_DEPLOYS} deploy-${S}"; done
 
+    # CronJob の env で切り替える（月次は既定値、日次は gcs-daily-backup-cronjob で上書き）
+    BACKUP_PREFIX="${BACKUP_PREFIX:-}"                # GCS オブジェクトの接頭辞（例: daily/）
+    BACKUP_LABEL="${BACKUP_LABEL:-月次バックアップ}"   # アナウンス・通知に使う名称
+    NOTIFY_ON_SUCCESS="${NOTIFY_ON_SUCCESS:-true}"    # false なら失敗時のみ Discord 通知
+
     # kubectl インストール（google/cloud-sdk:slim には含まれないため取得）
     echo "→ kubectl インストール中..."
     K8S_VER=$(curl -sL https://dl.k8s.io/release/stable.txt)
@@ -106,9 +111,9 @@ data:
 
       local COLOR TITLE
       if [ "${STATUS}" = "success" ]; then
-        COLOR=3066993; TITLE="📦 月次バックアップ ✅ 完了"
+        COLOR=3066993; TITLE="📦 ${BACKUP_LABEL} ✅ 完了"
       else
-        COLOR=15158332; TITLE="📦 月次バックアップ ❌ 失敗"
+        COLOR=15158332; TITLE="📦 ${BACKUP_LABEL} ❌ 失敗"
       fi
 
       # Python3 で Discord embed JSON を構築
@@ -133,9 +138,14 @@ data:
     if status == "failure" and not fields:
         fields.append({"name": "詳細", "value": "スクリプト実行中にエラーが発生しました。", "inline": False})
 
+    if status == "success":
+        description = f"{date_str} のバックアップ処理が完了しました。\n署名付き URL の有効期限: **12時間**"
+    else:
+        description = f"{date_str} のバックアップ処理でエラーが発生しました。"
+
     embed = {
         "title": title,
-        "description": f"{date_str} のバックアップ処理が完了しました。\n署名付き URL の有効期限: **12時間**",
+        "description": description,
         "color": color,
         "fields": fields,
     }
@@ -189,7 +199,7 @@ data:
 
     echo "→ メンテナンスアナウンスを送信中..."
     for S in ${JAVA_SERVERS} bedrock; do
-      announce_server "${S}" "say [月次バックアップ] 35秒後にサーバーを停止します"
+      announce_server "${S}" "say [${BACKUP_LABEL}] 35秒後にサーバーを停止します"
     done
     sleep 5
 
@@ -281,20 +291,23 @@ data:
     for TAR_FILE in "${UPLOAD_FILES[@]}"; do
       if [ -s "${TAR_FILE}" ]; then
         FNAME=$(basename "${TAR_FILE}")
-        gcloud storage cp "${TAR_FILE}" "${BUCKET}/${FNAME}"
-        echo "  完了: ${FNAME}"
+        OBJECT="${BUCKET}/${BACKUP_PREFIX}${FNAME}"
+        gcloud storage cp "${TAR_FILE}" "${OBJECT}"
+        echo "  完了: ${BACKUP_PREFIX}${FNAME}"
 
-        # mc-proxy-sa を使った V4 署名付き URL を生成
-        # system-managed key（IAM signBlob）のため最大 12h
+        # 成功通知に載せる署名付き URL（成功通知を送らない場合は生成しない）
+        # mc-proxy-sa を使った V4 署名付き URL。system-managed key（IAM signBlob）のため最大 12h
         # mc-proxy-sa は storage.buckets.get を持たないため --region 必須
-        SIGNED_URL=$(gcloud storage sign-url \
-          --impersonate-service-account="${SA_EMAIL}" \
-          --duration=12h \
-          --region=asia-northeast1 \
-          "${BUCKET}/${FNAME}" \
-          --format="value(signed_url)" 2>/dev/null || echo "")
-        SIGNED_URLS["${FNAME}"]="${SIGNED_URL}"
-        [ -n "${SIGNED_URL}" ] && echo "  署名済み URL 生成完了: ${FNAME}" || echo "  警告: URL 生成失敗 ${FNAME}"
+        if [ "${NOTIFY_ON_SUCCESS}" = "true" ]; then
+          SIGNED_URL=$(gcloud storage sign-url \
+            --impersonate-service-account="${SA_EMAIL}" \
+            --duration=12h \
+            --region=asia-northeast1 \
+            "${OBJECT}" \
+            --format="value(signed_url)" 2>/dev/null || echo "")
+          SIGNED_URLS["${FNAME}"]="${SIGNED_URL}"
+          [ -n "${SIGNED_URL}" ] && echo "  署名済み URL 生成完了: ${FNAME}" || echo "  警告: URL 生成失敗 ${FNAME}"
+        fi
 
         rm -f "${TAR_FILE}"
       else
@@ -303,11 +316,13 @@ data:
     done
 
     # ============================================================
-    # Discord 完了通知
+    # Discord 完了通知（NOTIFY_ON_SUCCESS=false の日次は失敗時のみ通知）
     # ============================================================
-    _send_discord_notification "success"
+    if [ "${NOTIFY_ON_SUCCESS}" = "true" ]; then
+      _send_discord_notification "success"
+    fi
 
-    echo "✓ GCS バックアップ完了: ${DATE_STR}"
+    echo "✓ GCS バックアップ完了（${BACKUP_LABEL}）: ${DATE_STR}"
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -351,6 +366,92 @@ spec:
                 # この env で gcloud/gcloud storage に直接認証情報を渡す
                 - name: CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE
                   value: /secrets/gcs-key.json
+              resources:
+                requests:
+                  cpu: 200m
+                  memory: 256Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+              volumeMounts:
+                - name: script-volume
+                  mountPath: /scripts
+                  readOnly: true
+                - name: gcs-credentials
+                  mountPath: /secrets
+                  readOnly: true
+                - name: data-bedrock
+                  mountPath: /data/bedrock
+                  readOnly: true
+                - name: data-survival
+                  mountPath: /data/survival
+                  readOnly: true
+          volumes:
+            - name: script-volume
+              configMap:
+                name: gcs-backup-script-cm
+                defaultMode: 0755
+            - name: gcs-credentials
+              secret:
+                secretName: gcs-backup-credentials
+                items:
+                  - key: key.json
+                    path: gcs-key.json
+            - name: data-bedrock
+              persistentVolumeClaim:
+                claimName: pvc-bedrock
+            - name: data-survival
+              persistentVolumeClaim:
+                claimName: pvc-survival
+---
+# 日次バックアップ（旧 MinIO 宛て bedrock-backup-cronjob の置き換え、2026-09-30〜）
+# 月次と同じ backup.sh を使い、GCS の daily/ に保存する（8 日でライフサイクル削除: Terraform/gcs_backup.tf）。
+# 月次（1日 03:00）と重ならないよう 2〜31 日の 04:00 JST に実行。成功時は通知せず、失敗時のみ Discord 通知。
+# 失敗時にスクリプトが再実行されサーバー停止を繰り返さないよう、リトライしない（翌日に再実行）。
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: gcs-daily-backup-cronjob
+  namespace: minecraft
+  labels:
+    app.kubernetes.io/name: gcs-backup
+    app.kubernetes.io/component: cronjob
+    app.kubernetes.io/managed-by: kubectl
+    env: prod
+spec:
+  schedule: "0 4 2-31 * *"  # 毎日 04:00 JST（1日は月次があるため除外）
+  timeZone: "Asia/Tokyo"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 0
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: gcs-backup
+            app.kubernetes.io/component: cronjob
+        spec:
+          serviceAccountName: gcs-backup-sa
+          restartPolicy: Never
+          containers:
+            - name: backup
+              image: google/cloud-sdk:slim
+              command: ["/bin/bash", "/scripts/backup.sh"]
+              env:
+                - name: GOOGLE_APPLICATION_CREDENTIALS
+                  value: /secrets/gcs-key.json
+                - name: CLOUDSDK_CORE_PROJECT
+                  value: project-61cf5742-d0ea-45ed-ac0
+                - name: CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE
+                  value: /secrets/gcs-key.json
+                - name: BACKUP_PREFIX
+                  value: daily/
+                - name: BACKUP_LABEL
+                  value: 日次バックアップ
+                - name: NOTIFY_ON_SUCCESS
+                  value: "false"
               resources:
                 requests:
                   cpu: 200m

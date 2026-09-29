@@ -43,9 +43,9 @@ GCP (GCE) とオンプレミス (k3s) を Tailscale VPN で接続した、Minecr
   - `bq-metrics`: VictoriaMetrics → BigQuery（15 秒解像度、Java / Bedrock 共通）— `40-bq-metrics.yaml`
   - `mc-log-shipper` DaemonSet: ログイン/ログアウト → Pub/Sub `mc-raw-logs`
   - `pubsub-list-subscriber`: Pub/Sub トリガーで `/list` を実行（現在は bedrock のみ）— `43-pubsub-list-subscriber.yaml`
-  - `bedrock-backup-cronjob`: 毎日 04:00 JST に Bedrock ワールドを MinIO へ — `bds-backup-cronjob.yaml`
-    （⚠️ 2026-09 時点で失敗中: mc クライアントの配布 URL が 410）
-  - `gcs-backup-cronjob`: 毎月1日 03:00 JST に Bedrock（と `JAVA_SERVERS`）を GCS へ — `35-gcs-backup-cronjob.yaml`
+  - `gcs-backup-cronjob` / `gcs-daily-backup-cronjob`: Bedrock（と `JAVA_SERVERS`）を GCS `sushiski-mc-backups` へ
+    — `35-gcs-backup-cronjob.yaml`。月次は毎月1日 03:00 JST（バケット直下・1年保持・成功/失敗を通知）、
+    日次は 2〜31日 04:00 JST（`daily/`・8日で削除・失敗時のみ通知）。旧 MinIO 宛て日次ジョブは 2026-09-30 に廃止
 - **monitoring-prometheus namespace**: `vmagent`（1s scrape → mc-monitoring-1）/ `vector` DaemonSet（ログ → mc-monitoring-1）
 - **本リポジトリ管理外**（触らない）: `homepage` / `misskey` / `relay` / `minecraft-data` namespace
 

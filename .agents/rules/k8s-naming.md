@@ -44,7 +44,7 @@ labels:
 ## ConfigMap / Secret
 
 - `<service>-<内容>-cm` / `<service>-<内容>-secret`
-- 例: `bedrock-backup-script-cm`, `bedrock-backup-secret`
+- 例: `gcs-backup-script-cm`（既存 Secret の `gcs-backup-credentials` 等は旧命名のまま運用）
 
 ## ❌ やってはいけないこと
 

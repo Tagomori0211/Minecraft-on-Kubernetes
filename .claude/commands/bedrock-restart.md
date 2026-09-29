@@ -1,6 +1,6 @@
 # Bedrock サーバー メンテナンス再起動
 
-既存の `bds-backup-cronjob` と同じアナウンスシーケンスで Bedrock サーバーを再起動する。
+バックアップ CronJob（`gcs-backup-cronjob` / `gcs-daily-backup-cronjob`）と同じアナウンスシーケンスで Bedrock サーバーを再起動する。
 必ずアナウンス → グレースフルストップ → replicas=0 → replicas=1 の順で実行すること。
 
 ## 手順

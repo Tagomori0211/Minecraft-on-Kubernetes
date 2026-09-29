@@ -122,8 +122,8 @@ labels:
 
 ### PVC / ConfigMap / Secret 命名
 - PVC: `<service>-<用途>-pvc`（既存は `pvc-bedrock`, `pvc-survival`）
-- ConfigMap: `<service>-<内容>-cm`（例: `bedrock-backup-script-cm`）
-- Secret: `<service>-<内容>-secret`（例: `bedrock-backup-secret`）
+- ConfigMap: `<service>-<内容>-cm`（例: `gcs-backup-script-cm`）
+- Secret: `<service>-<内容>-secret`（既存の `gcs-backup-credentials` 等は旧命名のまま運用）
 
 ### ❌ 禁止事項
 - `test`, `temp`, `new` などの曖昧な名前

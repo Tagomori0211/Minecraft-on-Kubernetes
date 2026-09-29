@@ -441,7 +441,7 @@ Secret Manager で以下を管理:
 | **グローバル遅延** | Tailscale Direct ≈ 20ms（東京リージョン経由）|
 | **デプロイ時間** | Terraform `apply` 約 5 分（VM プロビジョニング + cloud-init） |
 | **観測サイクル** | scrape 1秒（VM）/ BQ 集積 15秒 / Discord pull 5分 / 沈黙検知 5分 |
-| **バックアップ** | 月次 GCS Standard + 日次 Bedrock バックアップ（CronJob） |
+| **バックアップ** | GCS に月次（1年保持）+ 日次（8日保持）を k3s CronJob で保存 |
 | **コスト分析粒度** | プレイヤー比率按分（cost_analysis_view）|
 
 ---
