@@ -21,7 +21,7 @@ description: k3s クラスター操作スキル（SSH経由）
 |---------|------|-------------|---------|------|--------|
 | `k3s-worker` | 単一ノード k3s（minecraft / monitoring-prometheus ns） | 100.107.122.45 | `sudo kubectl` ✅ | `helm` ✅ | ✅ |
 
-SSH ホスト名は `~/.ssh/config` で解決済み。GCE VM（mc-proxy / mc-monitoring-1）へは k3s-worker から IAP SSH する（後述）。
+SSH ホスト名は `~/.ssh/config` で解決済み。GCE VM（mc-gateway）へは k3s-worker から IAP SSH する（後述）。
 
 ---
 
@@ -125,14 +125,10 @@ ssh k3s-worker 'helm list -n minecraft'
 ssh k3s-worker 'gcloud compute instances list'
 ```
 
-mc-proxy は MIG 管理でインスタンス名が動的（`mc-proxy-xxxx`）なため、現行名を取得してから接続する:
+GCE は単体 VM `mc-gateway` の 1 台（入口 socat は systemd、監視スタックは `/opt/mc-gateway` の compose）:
 
 ```bash
-ssh k3s-worker 'NAME=$(gcloud compute instances list --filter="name~^mc-proxy-" --format="value(name)") && gcloud compute ssh "$NAME" --zone=asia-northeast1-b --tunnel-through-iap --command="sudo docker compose -f /opt/mc-proxy/compose.yaml ps"'
-```
-
-```bash
-ssh k3s-worker 'gcloud compute ssh mc-monitoring-1 --zone=asia-northeast1-b --tunnel-through-iap --command="sudo docker compose -f /opt/mc-monitoring/compose.yaml ps"'
+ssh k3s-worker 'gcloud compute ssh mc-gateway --zone=asia-northeast1-b --tunnel-through-iap --command="systemctl is-active mc-socat-java mc-socat-bedrock mc-discord-notifier && sudo docker compose -f /opt/mc-gateway/compose.yaml ps"'
 ```
 
 ### 監視エージェント確認（vmagent / Vector）

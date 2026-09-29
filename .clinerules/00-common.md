@@ -59,8 +59,7 @@ k3s クラスターへの操作は `.agents/workflows/k3s-ssh-operations.md` を
 - SSH ホスト名は `~/.ssh/config` で解決済み: `k3s-worker`
 - `helm` は **sudo なし** で実行する（`sudo helm` は root に KUBECONFIG が無く localhost:8080 へ接続して失敗する）
 - GCE VM へは IAP SSH（gcloud 自体は k3s-worker から実行）
-  - 入口 `mc-proxy` は MIG 管理でインスタンス名が動的（`mc-proxy-xxxx`）。`mc-proxy-1` は存在しない
-  - 監視 VM は固定名 `mc-monitoring-1`
+  - GCE は単体 VM `mc-gateway` の 1 台のみ（入口 socat・監視スタック・Status Platform を集約）
 
 ### 基本パターン
 
@@ -72,8 +71,8 @@ ssh k3s-worker 'sudo kubectl get pods -n monitoring-prometheus'
 # 複数コマンド（SSH 内では && 可）
 ssh k3s-worker 'sudo kubectl get pods -n minecraft && sudo kubectl get pvc -n minecraft'
 
-# mc-proxy（MIG）へ IAP SSH: 現行インスタンス名を取得してから接続
-ssh k3s-worker 'NAME=$(gcloud compute instances list --filter="name~^mc-proxy-" --format="value(name)") && gcloud compute ssh "$NAME" --zone=asia-northeast1-b --tunnel-through-iap --command="sudo docker compose -f /opt/mc-proxy/compose.yaml ps"'
+# mc-gateway へ IAP SSH（監視スタックの状態確認）
+ssh k3s-worker 'gcloud compute ssh mc-gateway --zone=asia-northeast1-b --tunnel-through-iap --command="sudo docker compose -f /opt/mc-gateway/compose.yaml ps"'
 ```
 
 ---

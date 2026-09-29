@@ -34,7 +34,7 @@ Minecraft ハイブリッドクラウドインフラの構成管理リポジト�
 | `.clinerules` | **メインルールファイル**（絶対ルール・運用ルールすべて） |
 | `.agents/` | エージェント細則（rules/）・ワークフロー手順（workflows/） |
 | `k8s/onprem/` | k3s クラスタ用 Kubernetes マニフェスト・Helm charts |
-| `gce/` | GCE の cloud-init・Docker Compose・systemd。`gce/gateway/` は統合 VM `mc-gateway` 用（Grafana ダッシュボード JSON 含む）。直下の旧入口 `mc-proxy`（MIG）用ファイルは切替完了後に削除 |
+| `gce/` | GCE 単体 VM `mc-gateway`（入口 socat・監視スタック・Status Platform）の cloud-init・Docker Compose・systemd（`gce/gateway/`、Grafana ダッシュボード JSON 含む） |
 | `Terraform/` | GCP・Proxmox リソースの IaC 定義 |
 | `Ansible/` | k3s + Tailscale のインストール・マニフェスト適用 |
 | `Documents/` | アーキテクチャ図・ポストモーテム |
@@ -74,8 +74,8 @@ Minecraft ハイブリッドクラウドインフラの構成管理リポジト�
 # k3s Pod 状態確認
 ssh k3s-worker 'sudo kubectl get pods -n minecraft'
 
-# GCE 入口 VM（MIG・インスタンス名は動的）へ IAP SSH
-ssh -t k3s-worker 'NAME=$(gcloud compute instances list --filter="name~^mc-proxy-" --format="value(name)") && gcloud compute ssh "$NAME" --zone=asia-northeast1-b --tunnel-through-iap'
+# GCE VM（mc-gateway）へ IAP SSH
+ssh -t k3s-worker 'gcloud compute ssh mc-gateway --zone=asia-northeast1-b --tunnel-through-iap'
 
 # Terraform
 cd Terraform && terraform plan -var-file=secret.tfvars

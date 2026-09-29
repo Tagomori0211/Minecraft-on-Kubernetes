@@ -11,27 +11,24 @@ GCP (GCE) とオンプレミス (k3s) を Tailscale VPN で接続した、Minecr
 
 ## アーキテクチャ構成
 
-### 1. GCE 入口: mc-proxy（`Terraform/gce.tf` / `gce/`）
+### 1. GCE: mc-gateway（`Terraform/gateway.tf` / `gce/gateway/`）
 
-- **Managed Instance Group** `mc-proxy-mig`（size=1、TCP:25565 ヘルスチェックでオートヒーリング）
-  - インスタンス名は動的（`mc-proxy-xxxx`）。`mc-proxy-1` という固定名は存在しない
-  - e2-micro / pd-balanced 20GB / asia-northeast1-b / 静的IP `35.200.78.252`
-- **Docker Compose（host network, `gce/compose.yaml`）**
-  - `socat-tcp`: Java TCP 25565 → `100.107.122.45:30065`（survival NodePort）
-  - `socat-bedrock`: Bedrock UDP 19132 → `100.107.122.45:19132`（fork 透過転送）
-  - `node-exporter` + `vmagent-host`: ホストメトリクスを mc-monitoring-1 へ remote_write
-- **tailscaled**: systemd (kernel mode)。hostname `gce-mc-proxy`（Tailscale IP は MIG 再作成で変わる）
-- cloud-init（`gce/cloud-init.yaml`）が起動時に本リポジトリ main の `gce/` を clone して配置する
+入口・監視・Status Platform を 1 台に集約した単体 VM（2026-09-30 に mc-proxy MIG / mc-monitoring-1 / tagomori-app を統合）。
 
-### 2. GCE 監視: mc-monitoring-1（`Terraform/monitoring.tf` / `gce/monitoring/`）
+- e2-micro（swap 2GB）/ pd-balanced 20GB / asia-northeast1-b / 静的IP `35.200.78.252` / SA `mc-proxy-sa`
+- **systemd**
+  - `mc-socat-java`: Java TCP 25565 → `100.107.122.45:30065`（survival NodePort。Java 休眠中は接続先なし）
+  - `mc-socat-bedrock`: Bedrock UDP 19132 → `100.107.122.45:19132`（fork 透過転送）
+  - `mc-discord-notifier`: 課金アラート（Pub/Sub `billing-alerts-gce-pull`）→ Discord
+  - `prometheus-node-exporter`（127.0.0.1:9100）、`tailscaled`（hostname `gce-mc-gateway`）
+- **Docker Compose（host network, `/opt/mc-gateway`）**: VictoriaMetrics（:8428, 保持14日）/
+  VictoriaLogs（:9428, 保持30日）/ Grafana（:3000, Tailscale 経由のみ）/ vmalert / Alertmanager（Discord 直送）
+- **Status Platform**（app.tagomori.dev）: cloud-observability-gateway リポジトリの CI が `~/app` に配置
+  （cloudflared / Envoy / Ktor API / MariaDB）
+- cloud-init（`gce/gateway/cloud-init.yaml`）は VM 作成時に一度だけ実行され、本リポジトリ main の `gce/gateway/` を
+  `/opt/mc-gateway` に配置する。稼働中 VM への反映は IAP SSH で該当ファイルを更新して再起動する
 
-- e2-small / Tailscale `gce-mc-monitoring`（100.121.113.37）
-- Docker Compose: VictoriaMetrics（:8428, 保持14日）/ VictoriaLogs（:9428, 保持30日）/
-  Vector aggregator（:9001）/ Grafana（:3000, Tailscale 経由のみ）/ vmalert / Alertmanager /
-  alertmanager-discord / discord-notifier（課金アラート Pub/Sub pull）
-- cloud-init（`gce/monitoring-cloud-init.yaml`）が起動時に `gce/monitoring/` を clone して配置する
-
-### 3. オンプレ k3s（`k8s/onprem/`）
+### 2. オンプレ k3s（`k8s/onprem/`）
 
 - Proxmox 上の VM `k3s-worker`（192.168.0.151 / Tailscale 100.107.122.45）による **単一ノード k3s**
 - **minecraft namespace（本リポジトリ管理）**
@@ -46,25 +43,24 @@ GCP (GCE) とオンプレミス (k3s) を Tailscale VPN で接続した、Minecr
   - `gcs-backup-cronjob` / `gcs-daily-backup-cronjob`: Bedrock（と `JAVA_SERVERS`）を GCS `sushiski-mc-backups` へ
     — `35-gcs-backup-cronjob.yaml`。月次は毎月1日 03:00 JST（バケット直下・1年保持・成功/失敗を通知）、
     日次は 2〜31日 04:00 JST（`daily/`・8日で削除・失敗時のみ通知）。旧 MinIO 宛て日次ジョブは 2026-09-30 に廃止
-- **monitoring-prometheus namespace**: `vmagent`（1s scrape → mc-monitoring-1）/ `vector` DaemonSet（ログ → mc-monitoring-1）
+- **monitoring-prometheus namespace**: `vmagent`（1s scrape → mc-gateway）/ `vector` DaemonSet（ログ → mc-gateway の VictoriaLogs）
 - **本リポジトリ管理外**（触らない）: `homepage` / `misskey` / `relay` / `minecraft-data` namespace
 
 ## 接続フロー
 
 ```
 Java:    Player → 35.200.78.252:25565/TCP
-         → socat-tcp (GCE) → Tailscale → k3s NodePort :30065 (svc-survival)
+         → mc-socat-java (mc-gateway) → Tailscale → k3s NodePort :30065 (svc-survival)
 
 Bedrock: Player → 35.200.78.252:19132/UDP
-         → socat-bedrock (fork 透過) → Tailscale → BDS hostPort :19132
+         → mc-socat-bedrock (fork 透過) → Tailscale → BDS hostPort :19132
 ```
 
 ## Tailscale ネットワーク
 
 ```
-100.107.122.45  k3s-worker-1       ← オンプレ k3s
-100.121.113.37  gce-mc-monitoring  ← 監視 VM
-(動的)          gce-mc-proxy       ← 入口 VM（MIG 再作成で IP が変わる）
+100.107.122.45  k3s-worker-1    ← オンプレ k3s
+100.105.149.22  gce-mc-gateway  ← GCE（入口・監視。k3s の vmagent / Vector / bq-metrics の送信先）
 ```
 
 ## 既知の問題・制約
@@ -84,7 +80,8 @@ Bedrock: Player → 35.200.78.252:19132/UDP
 
 ### Terraform
 - state はローカル管理（`Terraform/terraform.tfstate`、リモートバックエンドなし）
-- `gce/cloud-init.yaml` を変更するとインスタンステンプレート再作成 → MIG が入口 VM を REPLACE（数分ダウン）
+- `gce/gateway/cloud-init.yaml` の変更は mc-gateway の metadata の in-place 更新のみ（再作成時にだけ効く）
+- 静的IP `google_compute_address.minecraft_ip` の description は ForceNew（変更すると公開 IP が変わる）
 - Proxmox VM の `tags` は provider が空白を返し続けるため `ignore_changes` で抑制済み
 
 ## ロードマップ

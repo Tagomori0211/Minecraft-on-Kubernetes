@@ -1,13 +1,13 @@
 # ============================================================
 # TAK Pipeline - Hybrid Cloud Minecraft Infrastructure
 # ============================================================
-# GCP（入口 mc-proxy MIG / 監視 mc-monitoring-1 / BigQuery / Pub/Sub /
+# GCP（入口・監視を集約した mc-gateway / BigQuery / Pub/Sub /
 # Secret Manager / Budget）とオンプレ Proxmox VM を管理する。
 #
 # ファイル構成:
 #   network.tf              VPC / Subnet / Firewall / 静的IP
-#   gce.tf                  mc-proxy インスタンステンプレート + オートヒーリング MIG
-#   monitoring.tf           mc-monitoring-1 VM
+#   gateway.tf              mc-gateway（入口 socat・監視スタック・Status Platform の単体 VM）
+#   gce.tf                  IAP SSH ファイアウォール・VM 用 SA（mc-proxy-sa）
 #   minecraft_monitoring.tf BigQuery メトリクス / コスト分析 VIEW
 #   log_pipeline.tf         ログイベント Pub/Sub + Cloud Function (Gen2)
 #   notifications.tf        課金 Budget → Pub/Sub → Discord

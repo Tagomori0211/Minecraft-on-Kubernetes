@@ -21,7 +21,7 @@ resource "google_compute_firewall" "iap_ssh" {
   source_ranges = ["35.235.240.0/20"]
   target_tags   = ["minecraft"]
 
-  description = "Allow SSH via IAP for mc-proxy-1 management"
+  description = "Allow SSH via IAP for mc-gateway management"
 }
 
 # ============================================================
@@ -30,7 +30,7 @@ resource "google_compute_firewall" "iap_ssh" {
 resource "google_service_account" "mc_proxy_sa" {
   account_id   = "mc-proxy-sa"
   display_name = "GCE Minecraft Proxy Service Account"
-  description  = "Used by mc-proxy-1 VM. Allows reading Secret Manager values only."
+  description  = "Service account of the mc-gateway VM (ingress, monitoring and Status Platform)."
 }
 
 resource "google_project_iam_member" "mc_proxy_secret_access" {

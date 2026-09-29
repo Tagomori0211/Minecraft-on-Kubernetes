@@ -9,15 +9,13 @@ flowchart LR
         MC_Pods -.->|ログ| VectorDS
     end
 
-    subgraph GCE_Mon["GCE: mc-monitoring-1 (e2-small)<br>Docker-compose"]
+    subgraph GCE_Mon["GCE: mc-gateway (e2-micro)<br>Docker Compose + systemd"]
         VM["VictoriaMetrics<br>8428 / 保持 14日<br>(長期は BQ)"]
         VLogs["VictoriaLogs<br>9428 / 保持 30日"]
-        VectorAgg["Vector Aggregator<br>:9001"]
         Grafana["Grafana<br>(アクセスはTailscale経由のみ)"]
         VMAlert["vmalert<br>ルール評価 30s<br>沈黙/Down/scrape/鍵期限"]
-        AM["Alertmanager<br>:9093"]
-        AMD["alertmanager-discord<br>ブリッジ"]
-        Alert_Job["discord-notifier<br>課金 5分pull"]
+        AM["Alertmanager<br>discord_configs"]
+        Alert_Job["mc-discord-notifier<br>(systemd) 課金 5分pull"]
     end
 
     subgraph GCP_Svc["GCP マネージドサービス"]
@@ -33,15 +31,13 @@ flowchart LR
     VM --> Grafana
     VM --> BQ_Job
 
-    VectorDS -->|Tailscale :9001| VectorAgg
-    VectorAgg -->|Loki API push| VLogs
+    VectorDS -->|Tailscale :9428 Loki API push| VLogs
     VLogs --> Grafana
     Grafana --> Admin
 
     VM -->|ルール評価| VMAlert
     VMAlert -->|発火| AM
-    AM -->|webhook| AMD
-    AMD -->|Discord embed| Discord
+    AM -->|Discord embed| Discord
 
     Budget --> PubSub
     PubSub -->|課金アラート| Alert_Job
@@ -56,12 +52,10 @@ flowchart LR
     style GCE_Mon    fill:#0F9D58,color:#fff,stroke:#fff,stroke-width:2px
     style VM         fill:#e6522c,color:#fff
     style VLogs      fill:#a259ff,color:#fff
-    style VectorAgg  fill:#08b3a6,color:#fff
     style Grafana    fill:#f46800,color:#fff
     style BQ_Job     fill:#4285F4,color:#fff
     style VMAlert    fill:#e6522c,color:#fff
     style AM         fill:#e6522c,color:#fff
-    style AMD        fill:#5865F2,color:#fff
     style Alert_Job  fill:#7F52FF,color:#fff
     style GCP_Svc    fill:#2962FF,color:#fff,stroke:#82B1FF
     style BQ         fill:#123564,color:#fff

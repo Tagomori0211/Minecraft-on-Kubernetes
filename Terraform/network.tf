@@ -1,7 +1,7 @@
 # ============================================================
 # Network: VPC / Subnet / Firewall / 静的IP
 # ============================================================
-# GCE（mc-proxy MIG / mc-monitoring-1）が共用するネットワーク基盤。
+# GCE（mc-gateway）のネットワーク基盤。
 # ============================================================
 
 # ============================================================
@@ -49,8 +49,7 @@ resource "google_compute_firewall" "tailscale_udp" {
   description = "Allow Tailscale UDP traffic for VPN"
 }
 
-# Minecraft 用（mc-proxy の socat が 25565/TCP・19132/UDP で待受）
-# MIG オートヒーリングの TCP:25565 ヘルスチェックもこのルールで到達する（gce.tf 参照）
+# Minecraft 用（mc-gateway の socat が 25565/TCP・19132/UDP で待受）
 resource "google_compute_firewall" "minecraft_tcp" {
   name    = "${var.vpc_name}-allow-minecraft"
   network = google_compute_network.tak_vpc.name
@@ -99,7 +98,7 @@ resource "google_compute_firewall" "internal" {
 # ============================================================
 # 静的IP（Minecraft 公開エンドポイント 35.200.78.252）
 # ============================================================
-# mc-proxy MIG のインスタンステンプレート access_config.nat_ip で付与する（gce.tf）。
+# mc-gateway の access_config.nat_ip で付与する（gateway.tf）。
 # ⚠️ google_compute_address は description を含む属性変更が再作成（= 公開IPが変わる）に
 #    なるため、description の文言が古くても変更しないこと。
 

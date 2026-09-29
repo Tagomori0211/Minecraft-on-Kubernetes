@@ -34,7 +34,7 @@ resource "google_compute_instance" "mc_gateway" {
     }
   }
 
-  # tagomori-app と同じ SA（Secret Manager 読取・BigQuery・GCS・Pub/Sub の既存権限、CI の actAs 付与済み）
+  # mc-proxy-sa: Secret Manager 読取・BigQuery・GCS・Pub/Sub の権限。Status Platform の CI SA に actAs 付与済み
   service_account {
     email  = google_service_account.mc_proxy_sa.email
     scopes = ["cloud-platform"]

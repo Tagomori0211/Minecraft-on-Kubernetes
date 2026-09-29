@@ -14,7 +14,7 @@ description: Kubernetes / k3s マニフェスト作成・編集時のネーミ�
 **現状の稼働クラスター:**
 - ゲームサーバー: `minecraft` namespace（移行せず運用中）
 - k3s 内の監視エージェント（vmagent / Vector）: `monitoring-prometheus` namespace
-- 監視本体（VictoriaMetrics / Grafana 等）は GCE `mc-monitoring-1` の Docker Compose（k8s 外）
+- 監視本体（VictoriaMetrics / Grafana 等）は GCE `mc-gateway` の Docker Compose（k8s 外）
 
 新規リソースを追加する場合は `minecraft` namespace に揃えること（既存クラスターとの整合性優先）。
 

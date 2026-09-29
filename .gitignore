@@ -15,8 +15,6 @@ k8s/onprem/onprem_*
 k8s/onprem/playersync-configmaps.yaml
 # DeepSeekCode（機密情報を含む）
 DeepSeekCode.sh
-# GCE: 平文 secret は Secret Manager から動的取得する
-**/forwarding.secret
 # mc-gateway: Discord webhook は cloud-init が Secret Manager から secrets/ に生成
 gce/gateway/secrets/
 # Claude Code のローカル設定
@@ -54,8 +52,7 @@ build/
 # ---- ローカル専用ファイル ----
 # 手元スクリプト（gce/ 配下の運用スクリプトは管理対象として例外）
 scripts/
-!gce/scripts/
-!gce/monitoring/scripts/
+!gce/gateway/scripts/
 Task_mds/
 DocMd/
 ModList/

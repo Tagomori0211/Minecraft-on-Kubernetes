@@ -1,10 +1,6 @@
 # GCE: mc-gateway（入口・監視・Status Platform を集約した単体 VM）
 
-> **移行中（2026-09-30〜）**: mc-proxy（MIG）/ mc-monitoring-1 / tagomori-app の 3 台を `mc-gateway` 1 台（e2-micro）へ統合している。
-> 切替が終わるまで、旧 mc-proxy MIG が参照する `compose.yaml` / `vmagent.yml` / `systemd/` / `cloud-init.yaml` と、
-> Terraform が参照する `monitoring-cloud-init.yaml` は残している（切替後に削除）。
-
-VM は Terraform（`Terraform/gateway.tf`）で管理する。
+GCE の VM はこの 1 台だけで、Terraform（`Terraform/gateway.tf`）で管理する。
 
 ## 構成（mc-gateway）
 

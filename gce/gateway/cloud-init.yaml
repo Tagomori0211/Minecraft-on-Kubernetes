@@ -160,7 +160,9 @@ runcmd:
   - systemctl enable --now mc-monitoring.service
 
   # Status Platform の CI（OS Login）用
-  - echo "session optional pam_exec.so /usr/local/bin/add-oslogin-docker-group.sh" >> /etc/pam.d/sshd
+  # /etc/pam.d/sshd は末尾に改行が無い（OS Login のコメント行で終わる）ため、先頭に改行を入れて追記する。
+  # 改行が無いとコメント行に連結されて無効になり、CI が docker.sock に接続できない（2026-09-30 に発生）
+  - printf '\nsession optional pam_exec.so /usr/local/bin/add-oslogin-docker-group.sh\n' >> /etc/pam.d/sshd
 
   # 起動確認ログ
   - systemctl --no-pager status mc-socat-java mc-socat-bedrock mc-discord-notifier > /var/log/mc-gateway-bootstrap.log 2>&1 || true

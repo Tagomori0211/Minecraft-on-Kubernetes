@@ -8,13 +8,13 @@ subgraph Legend["GameTraffic Architecture"]
     Player_Bedrock["🪨 Bedrock版プレイヤー<br/><b>19132/UDP</b>"]
 
     %% ───────────── GCE エントランス ─────────────
-    subgraph GCE["☁️ GCE エントランス : e2-micro / 1GB"]
+    subgraph GCE["☁️ GCE mc-gateway : e2-micro / 1GB"]
         direction TB
-        subgraph Compose["🐳 Docker Compose — host network"]
-            SocatTCP["socat-tcp<br/>TCP4-LISTEN:25565,fork<br/>→ 100.107.122.45:30065"]
-            SocatUDP["socat-bedrock<br/>UDP4-LISTEN:19132,fork<br/>→ 100.107.122.45:19132"]
+        subgraph Compose["⚙️ systemd"]
+            SocatTCP["mc-socat-java<br/>TCP4-LISTEN:25565,fork<br/>→ 100.107.122.45:30065"]
+            SocatUDP["mc-socat-bedrock<br/>UDP4-LISTEN:19132,fork<br/>→ 100.107.122.45:19132"]
         end
-        TailscaledGCE["🔐 tailscaled (systemd)<br/>gce-mc-proxy : IP 動的（MIG）"]
+        TailscaledGCE["🔐 tailscaled (systemd)<br/>gce-mc-gateway : 100.105.149.22"]
     end
 
     %% ───────────── Tailscale VPN ─────────────

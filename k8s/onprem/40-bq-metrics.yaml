@@ -1,9 +1,6 @@
 # ============================================================
 # TAK Pipeline - BQ メトリクス挿入ジョブ（k3s 常駐 Pod）
 # ============================================================
-# 監視系再構築（mermaid=真）に伴い、旧 mc-proxy-1 の systemd timer
-# (bq-metrics.timer / insert_metrics.py) を k3s 内 Deployment へ移設。
-#
 #   VictoriaMetrics(1s 解像度) → 本Pod → 15秒解像度で BigQuery へ INSERT
 #
 # 認証: gcs-backup-cronjob と同じ cred-file パターンを再利用。

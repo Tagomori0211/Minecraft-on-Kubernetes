@@ -5,7 +5,7 @@
 # 対象ホスト:
 #   minecraft : オンプレ k3s-worker (192.168.0.151) — 単一ノード k3s
 #
-# Tailscale で GCE (mc-proxy / mc-monitoring-1) と接続する
+# Tailscale で GCE (mc-gateway) と接続する
 # ============================================================
 
 - name: Install k3s and Tailscale

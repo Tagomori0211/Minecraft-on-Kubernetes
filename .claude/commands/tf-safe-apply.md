@@ -7,7 +7,7 @@ description: Safe Terraform Apply（plan 確認 → 破壊的変更強調 → �
 1. `Terraform/` で `terraform plan -var-file=secret.tfvars -out=tfplan` を実行し、出力全体を表示する
 2. リソースの REPLACEMENT または DESTROY アクションを強調表示する
 3. 特に以下をチェックする
-   - `google_compute_instance_template.mc_proxy` の replace（= MIG が入口 VM を再作成し数分ダウン。`gce/cloud-init.yaml` を変更すると必ず発生）
+   - `google_compute_instance.mc_gateway` の replace（= 入口・監視・Status Platform が止まり、ブートディスク上の監視データと MariaDB が消える）
    - `google_compute_address.minecraft_ip` の replace（公開 IP 35.200.78.252 が変わる。絶対に避ける）
    - Proxmox VM の `vm_state`（停止中 VM の起動）・タグ・ブートデバイス問題
 4. `terraform apply tfplan` の前に明示的なユーザー確認を待つ

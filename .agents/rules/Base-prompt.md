@@ -50,8 +50,8 @@ k3s クラスターへの操作が必要な場合は `.agents/workflows/k3s-ssh-
 - `kubectl` / `helm` / `gcloud` はクライアントマシンから直接実行できない — SSH 経由のみ
 - k3s は `k3s-worker` の単一ノード構成。`gcloud` も k3s-worker にのみインストール済み
 - SSH ホスト名は `~/.ssh/config` で解決済み: `k3s-worker`
-- GCE VM へは IAP SSH（gcloud 自体は k3s-worker から実行）。入口 `mc-proxy` は MIG 管理で
-  インスタンス名が動的なため、`gcloud compute instances list --filter="name~^mc-proxy-"` で現行名を取得してから接続する
+- GCE VM へは IAP SSH（gcloud 自体は k3s-worker から実行）。GCE は単体 VM `mc-gateway` の 1 台のみ
+  （入口 socat・監視スタック・Status Platform を集約）
 
 ### Pod 再起動ルール（最重要）
 `minecraft` namespace の **全 Deployment（survival / bedrock）** に適用:

@@ -85,8 +85,8 @@ DeepSeek は Claude に比べ **幻覚（存在しないファイル・コマン
 
 - **`kubectl` / `helm` / `gcloud` はローカルから直接実行不可。** 必ず `ssh k3s-worker '...'` 経由。
   詳細は [`.agents/workflows/k3s-ssh-operations.md`](../.agents/workflows/k3s-ssh-operations.md)。
-- **GCE インスタンス名は動的**（autohealing MIG `mc-proxy-mig`）。`mc-proxy-1` という固定名は**存在しない**。
-  SSH 前に現行インスタンス名を `gcloud compute instances list`（k3s-worker 経由）で取得する。
+- **GCE は単体 VM `mc-gateway` の 1 台のみ**。`mc-proxy-*` / `mc-monitoring-1` / `tagomori-app` は統合済みで**存在しない**。
+  IAP SSH は `gcloud compute ssh mc-gateway --zone=asia-northeast1-b --tunnel-through-iap`（k3s-worker 経由）。
 - **Pod ラベルは `app.kubernetes.io/component=survival|bedrock`**（`name=` ではない）。
 - **Pod 再起動は全 Deployment で `replicas=0`→（完全停止確認）→`replicas=1`**。`rollout restart` 禁止。
 - namespace 無指定デプロイ・`default` への直デプロイ禁止。新規リソースは `minecraft` ns に揃える。
