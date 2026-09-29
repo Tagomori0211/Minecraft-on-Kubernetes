@@ -31,7 +31,7 @@ variable "region" {
 }
 
 variable "zone" {
-  description = "GCP ゾーン（mc-proxy MIG / mc-monitoring-1 の配置先）"
+  description = "GCP ゾーン（mc-gateway の配置先）"
   type        = string
   default     = "asia-northeast1-b"
 }
@@ -64,12 +64,6 @@ variable "gateway_machine_type" {
   description = "mc-gateway のマシンタイプ。足りなければ e2-small に上げる（停止を伴う in-place 更新）"
   type        = string
   default     = "e2-micro"
-}
-
-variable "gateway_use_static_ip" {
-  description = "true で公開静的 IP 35.200.78.252 を mc-gateway に付ける（旧 mc-proxy MIG の削除後に切り替える）"
-  type        = bool
-  default     = false
 }
 
 # ============================================================

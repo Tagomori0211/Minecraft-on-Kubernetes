@@ -1,17 +1,12 @@
 # ============================================================
 # GCE: mc-gateway（入口 socat・監視スタック・Status Platform を集約した単体 VM）
 # ============================================================
-# 2026-09 に mc-proxy（MIG）/ mc-monitoring-1 / tagomori-app の 3 台を 1 台に統合する。
-#
 # 構成（詳細は gce/gateway/ と gce/README.md）:
+#   - 公開 IP: 静的 IP 35.200.78.252（tagomori-minecraft-ip、network.tf）
 #   - systemd: socat（Java 25565/tcp・Bedrock 19132/udp → Tailscale → k3s-worker）、課金通知、node-exporter
 #   - docker compose: VictoriaMetrics / VictoriaLogs / Grafana / vmalert / Alertmanager
 #   - Status Platform（cloud-observability-gateway の CI が OS Login で ~/app に配置）
 #   - 単体 VM のためブートディスク（監視データ・MariaDB・Tailscale ノード状態）は再起動後も保持される
-#
-# 公開 IP の切替手順（var.gateway_use_static_ip）:
-#   false: 一時 IP で構築・検証（旧 mc-proxy MIG が 35.200.78.252 を保持中）
-#   true : MIG 削除で 35.200.78.252 を解放した後に付け替える（入口の停止は付け替えの数分のみ）
 # ============================================================
 
 resource "google_compute_instance" "mc_gateway" {
@@ -35,7 +30,7 @@ resource "google_compute_instance" "mc_gateway" {
   network_interface {
     subnetwork = google_compute_subnetwork.tak_subnet.name
     access_config {
-      nat_ip = var.gateway_use_static_ip ? google_compute_address.minecraft_ip.address : null
+      nat_ip = google_compute_address.minecraft_ip.address
     }
   }
 
@@ -68,6 +63,6 @@ resource "google_compute_instance" "mc_gateway" {
 }
 
 output "mc_gateway_external_ip" {
-  description = "mc-gateway の外部 IP（gateway_use_static_ip=true で 35.200.78.252）"
+  description = "mc-gateway の外部 IP（静的 IP 35.200.78.252）"
   value       = google_compute_instance.mc_gateway.network_interface[0].access_config[0].nat_ip
 }

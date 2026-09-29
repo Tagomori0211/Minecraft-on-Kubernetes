@@ -15,7 +15,7 @@ output "subnet_name" {
 
 # 静的IP
 output "minecraft_static_ip" {
-  description = "Minecraft 公開エンドポイントの静的IP（mc_proxy_external_ip と同値）"
+  description = "Minecraft 公開エンドポイントの静的IP（mc-gateway に付与）"
   value       = google_compute_address.minecraft_ip.address
 }
 
