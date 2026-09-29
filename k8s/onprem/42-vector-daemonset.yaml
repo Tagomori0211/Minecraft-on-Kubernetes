@@ -2,15 +2,13 @@
 # Vector DaemonSet - Minecraft ログ収集 → VictoriaLogs
 # ============================================================
 # minecraft namespace の全 Pod ログを /var/log/pods/ から収集し
-# mc-monitoring-1 (Tailscale 100.121.113.37:9001) の
-# Vector aggregator 経由で VictoriaLogs に転送する。
+# mc-gateway（Tailscale 100.105.149.22）の VictoriaLogs へ直接送る。
 #
 # ログフロー:
 #   /var/log/pods/minecraft_*/  (hostPath)
 #     → Vector kubernetes_logs source
 #     → flatten_meta transform  (ラベル整理)
-#     → vector://100.121.113.37:9001  (Tailscale)
-#     → Vector aggregator (monitoring compose)
+#     → loki sink: http://100.105.149.22:9428/insert/loki/api/v1/push  (Tailscale)
 #     → VictoriaLogs
 #
 # 既存の mc-log-shipper (Pub/Sub → BigQuery) とは独立。
@@ -99,12 +97,21 @@ data:
           .log_pod = .kubernetes.pod_name || "unknown"
 
     sinks:
-      monitoring:
-        type: vector
+      victorialogs:
+        type: loki
         inputs: [flatten_meta]
-        # mc-monitoring-1 の Tailscale IP (vector aggregator port)
-        address: "100.121.113.37:9001"
-        version: "2"
+        # mc-gateway の VictoriaLogs（Loki 互換 API）。Vector は endpoint + /loki/api/v1/push に POST する
+        endpoint: "http://100.105.149.22:9428/insert"
+        labels:
+          job: "{{ job }}"
+          container: "{{ log_container }}"
+          namespace: "{{ log_namespace }}"
+          pod: "{{ log_pod }}"
+        encoding:
+          codec: text
+        compression: none
+        request:
+          concurrency: 4
         buffer:
           type: memory
           max_events: 10000

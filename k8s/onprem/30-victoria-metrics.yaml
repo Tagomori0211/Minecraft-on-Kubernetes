@@ -1,13 +1,13 @@
 # ============================================================
 # TAK Pipeline - vmagent (オンプレ k3s)
 # ============================================================
-# VictoriaMetrics と Grafana は GCE mc-monitoring-1 に移行済み。
+# VictoriaMetrics と Grafana は GCE mc-gateway（統合 VM）で動く。
 # vmagent のみ k3s 内に残し:
 #   - Kubernetes サービスディスカバリ（nodes / cAdvisor）
 #   - Minecraft メトリクスのスクレイプ（ClusterIP DNS 名）
 #   - remote_write で GCE VictoriaMetrics に転送
 #
-# remote_write 先: mc-monitoring-1 の Tailscale IP = 100.121.113.37
+# remote_write 先: mc-gateway の Tailscale IP = 100.105.149.22
 # ============================================================
 
 apiVersion: v1
@@ -147,6 +147,9 @@ metadata:
     env: "prod"
 spec:
   replicas: 1
+  # 旧 Pod を止めてから新 Pod を作る（新旧 Pod を並走させない）
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app.kubernetes.io/name: "vmagent"
@@ -161,7 +164,7 @@ spec:
           image: victoriametrics/vmagent:v1.115.0
           args:
             - "-promscrape.config=/etc/vmagent/vmagent.yml"
-            - "-remoteWrite.url=http://100.121.113.37:8428/api/v1/write"
+            - "-remoteWrite.url=http://100.105.149.22:8428/api/v1/write"
             - "-promscrape.suppressDuplicateScrapeTargetErrors"
             - "-remoteWrite.queues=2"
           volumeMounts:

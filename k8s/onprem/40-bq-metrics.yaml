@@ -15,7 +15,7 @@
 # ⚠️ apply 前提（手動確認）:
 #   - cred-file の principal が mc-proxy-sa に serviceAccountTokenCreator を持つこと
 #     （Terraform/notifications.tf で terraform_executor に付与済みの委譲を再利用）
-#   - VictoriaMetrics へは Tailscale IP 100.121.113.37:8428 で到達（vmagent と同経路）
+#   - VictoriaMetrics へは mc-gateway の Tailscale IP 100.105.149.22:8428 で到達（vmagent と同経路）
 # ============================================================
 
 apiVersion: v1
@@ -58,8 +58,8 @@ data:
     import urllib.request
     from datetime import datetime, timezone
 
-    # GCE mc-monitoring-1 VictoriaMetrics (Tailscale 経由・vmagent と同じ宛先)
-    VM_URL = os.environ.get("VM_URL", "http://100.121.113.37:8428")
+    # GCE mc-gateway の VictoriaMetrics (Tailscale 経由・vmagent と同じ宛先)
+    VM_URL = os.environ.get("VM_URL", "http://100.105.149.22:8428")
     BQ_PROJECT = os.environ.get("CLOUDSDK_CORE_PROJECT", "")
     BQ_TABLE = os.environ.get("BQ_TABLE", "minecraft_monitoring.server_metrics")
     # 挿入間隔（秒）。mermaid 設計値 = 15秒解像度。
@@ -174,7 +174,7 @@ spec:
           command: ["python3", "/scripts/insert_metrics.py"]
           env:
             - name: VM_URL
-              value: "http://100.121.113.37:8428"
+              value: "http://100.105.149.22:8428"
             - name: SAMPLE_INTERVAL_SEC
               value: "15"
             - name: BQ_TABLE
