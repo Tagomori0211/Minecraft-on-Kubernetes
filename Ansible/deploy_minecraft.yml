@@ -2,13 +2,11 @@
 # ============================================================
 # TAK Pipeline - マニフェストデプロイ
 # ============================================================
-# infrastructure.mermaid に基づいてノード別に適用
+# 対象: k3s-worker (192.168.0.151) の単一ノード k3s
 #
-#   minecraft (192.168.0.151):
-#     backend-servers.yaml → Survival / Mod / Bedrock / Tailscale Router
-#
-#   app (192.168.0.150):
-#     appserver.yaml → Kotlin API / Envoy / Flutter Web / CF Tunnel
+#   backend-servers.yaml → minecraft namespace / Bedrock (deploy-bedrock)
+#   ※ Survival (Java) は Helm 管理のため対象外
+#     (k8s/onprem/helm/values-survival.yaml)
 # ============================================================
 
 # ── MinecraftServer ノード ────────────────────────────────────
@@ -46,4 +44,3 @@
     - name: Show apply result
       debug:
         msg: "{{ apply_result.stdout_lines }}"
-# (Phase 3 以降の AppServer / Status Platform デプロイは一旦保留・後回し)

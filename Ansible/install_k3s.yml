@@ -2,12 +2,10 @@
 # ============================================================
 # TAK Pipeline - k3s + Tailscale インストール
 # ============================================================
-# 対象ホスト (infrastructure.mermaid):
-#   minecraft : オンプレ MinecraftServer ノード (192.168.0.151)
-#   app       : オンプレ AppServer ノード       (192.168.0.150)
+# 対象ホスト:
+#   minecraft : オンプレ k3s-worker (192.168.0.151) — 単一ノード k3s
 #
-# 各ノードは独立した k3s シングルクラスター
-# Tailscale で GKE と接続する
+# Tailscale で GCE (mc-proxy / mc-monitoring-1) と接続する
 # ============================================================
 
 - name: Install k3s and Tailscale
