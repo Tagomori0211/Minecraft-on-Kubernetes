@@ -15,7 +15,7 @@ output "subnet_name" {
 
 # 静的IP
 output "minecraft_static_ip" {
-  description = "Static IP for Minecraft LoadBalancer"
+  description = "Minecraft 公開エンドポイントの静的IP（mc_proxy_external_ip と同値）"
   value       = google_compute_address.minecraft_ip.address
 }
 
@@ -23,19 +23,6 @@ output "minecraft_static_ip" {
 output "tailscale_firewall_rule" {
   description = "Tailscale firewall rule name"
   value       = google_compute_firewall.tailscale_udp.name
-}
-
-# コスト見積もり用情報
-output "cost_estimation_info" {
-  description = "Information for cost estimation"
-  value = {
-    region         = var.region
-    cluster_type   = "n/a (GKE 廃止済み)"
-    proxy_node     = "e2-micro (GCE / Docker Compose: socat-tcp + socat-bedrock)"
-    nat_enabled    = false
-    static_ip      = true
-    estimated_note = "GKE → GCE 移行完了（2026-05-03）。月額 ¥19,700 → ¥3,680 に削減（81%減）。"
-  }
 }
 
 # ============================================================

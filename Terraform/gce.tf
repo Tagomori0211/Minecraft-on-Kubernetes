@@ -1,19 +1,16 @@
 # ============================================================
-# GCE Minecraft Proxy VM (GKE 代替)
+# GCE Minecraft Proxy (mc-proxy)
 # ============================================================
-# 移行目的:
-#   GKE Standard を GCE 単一 VM に置換し、月額 ¥19,700 → ¥3,680 へ削減（81%減）
-#   ホームIP遮蔽の役割は VM が引き継ぎ、socat-tcp / socat-bedrock を Docker Compose で運用
-#   （Velocity / nginx-stream は撤去済み。Java も socat-tcp で NodePort 直結）
+# 公開エンドポイント。自宅 IP を隠蔽し、socat-tcp / socat-bedrock（Docker Compose）で
+# Tailscale 経由のオンプレ k3s へ透過転送する（gce/compose.yaml）。
 #
 # 構成:
-#   - e2-micro / asia-northeast1-b（薄い socat プロキシのため再構築で e2-medium から downsize）
-#   - Ubuntu 24.04 LTS / pd-balanced 20GB
-#   - 静的IP 35.200.78.252（tagomori-minecraft-ip）を access_config にアタッチ
+#   - e2-micro / asia-northeast1-b / Ubuntu 24.04 LTS / pd-balanced 20GB
+#   - 静的IP 35.200.78.252（tagomori-minecraft-ip）をテンプレートの access_config にアタッチ
 #   - cloud-init で Docker / Tailscale / mc-proxy.service をプロビジョニング
 #   - Service Account `mc-proxy-sa` に Secret Manager 読取権限のみ付与
 #
-# 既存リソースの再利用:
+# 参照リソース（network.tf）:
 #   - VPC: google_compute_network.tak_vpc
 #   - Subnet: google_compute_subnetwork.tak_subnet
 #   - Firewall: tailscale_udp / minecraft_tcp（target_tags で適用）
@@ -60,11 +57,13 @@ resource "google_project_iam_member" "mc_proxy_secret_access" {
 # ============================================================
 # 単体 VM を Managed Instance Group (zonal, size=1) 化し、
 # TCP:25565 ヘルスチェックで自動復旧（autohealing）を有効化する。
-# 静的IP 35.200.78.252 は stateful_external_ip + テンプレート nat_ip で維持。
+# 静的IP 35.200.78.252 はテンプレートの access_config.nat_ip で付与する。
 #
-# ⚠️ 既存単体 VM (mc-proxy-1) は destroy され MIG 管理インスタンス
-#    (mc-proxy-xxxx) として再作成される（= 入口ダウンタイム数分）。
-#    インスタンス名が変わるため `mc-proxy-1` を直指定する SSH 手順は要更新。
+# ⚠️ インスタンス名は mc-proxy-xxxx（動的）。旧単体 VM 名 `mc-proxy-1` は存在しない。
+#    SSH 時は `gcloud compute instances list --filter="name~^mc-proxy-"` で現行名を取得する。
+# ⚠️ user-data は gce/cloud-init.yaml を file() で埋め込むため、同ファイルを
+#    1 文字でも変更するとテンプレート再作成 → MIG の REPLACE（入口ダウンタイム）になる。
+#    cloud-init は起動時に main ブランチの gce/ を clone して配置する点にも注意。
 # ============================================================
 
 resource "google_compute_instance_template" "mc_proxy" {
@@ -171,7 +170,7 @@ resource "google_compute_instance_group_manager" "mc_proxy" {
 # Outputs
 # ============================================================
 output "mc_proxy_external_ip" {
-  description = "GCE Minecraft Proxy 静的外部IP（MIG 管理・stateful 維持）"
+  description = "GCE Minecraft Proxy 静的外部IP（MIG テンプレートの nat_ip で付与）"
   value       = google_compute_address.minecraft_ip.address
 }
 

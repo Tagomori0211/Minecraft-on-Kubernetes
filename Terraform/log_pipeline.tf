@@ -2,7 +2,9 @@
 # Minecraft ログイベント駆動パイプライン
 # ============================================================
 # フロー:
-#   k3s Vector DaemonSet → Pub/Sub mc-raw-logs
+#   k3s mc-log-shipper DaemonSet / survival の log-shipper サイドカー
+#   （k8s/onprem/40-mc-log-shipper.yaml / 41-java-log-shipper-cm.yaml）
+#     → Pub/Sub mc-raw-logs
 #     → Cloud Function (Gen2) → ハッシュ化
 #     → Pub/Sub mc-clean-events
 #     → BigQuery Subscription (コード不要) → player_activities

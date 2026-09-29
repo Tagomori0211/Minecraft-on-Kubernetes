@@ -1,8 +1,17 @@
 # ============================================================
-# TAK Pipeline - GKE Autopilot Hybrid Infrastructure
+# TAK Pipeline - Hybrid Cloud Minecraft Infrastructure
 # ============================================================
-# Purpose: GKE Autopilotクラスターをエントランスとして構築
-# Cost Strategy: Spot Pod優先でコスト最適化
+# GCP（入口 mc-proxy MIG / 監視 mc-monitoring-1 / BigQuery / Pub/Sub /
+# Secret Manager / Budget）とオンプレ Proxmox VM を管理する。
+#
+# ファイル構成:
+#   network.tf              VPC / Subnet / Firewall / 静的IP
+#   gce.tf                  mc-proxy インスタンステンプレート + オートヒーリング MIG
+#   monitoring.tf           mc-monitoring-1 VM
+#   minecraft_monitoring.tf BigQuery メトリクス / コスト分析 VIEW
+#   log_pipeline.tf         ログイベント Pub/Sub + Cloud Function (Gen2)
+#   notifications.tf        課金 Budget → Pub/Sub → Discord
+#   billing.tf / privacy.tf / gcs_backup.tf / proxmox.tf
 # ============================================================
 
 terraform {
@@ -34,7 +43,7 @@ terraform {
   # State管理（本番運用時はGCSバックエンドを推奨）
   # backend "gcs" {
   #   bucket = "tak-pipeline-tfstate"
-  #   prefix = "hybrid/gke"
+  #   prefix = "minecraft-infra"
   # }
 }
 

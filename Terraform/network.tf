@@ -1,21 +1,7 @@
 # ============================================================
-# GKE Standard Cluster (ゾーナル / プロキシ専用)
+# Network: VPC / Subnet / Firewall / 静的IP
 # ============================================================
-# 移行目的:
-#   Autopilot → Standard に変更してコストを削減
-#   プロキシ層（Velocity / nginx-gw / socat）のみ GKE に残す
-#   Lobby はオンプレに移行済み
-#
-# Node Pool 構成:
-#   proxy-pool: e2-medium × 1（Regular）
-#     - Velocity, nginx-gw, socat を配置
-#     - Spot 非対応（Velocity 停止 = 全サーバーダウンのため）
-#
-# コストメモ:
-#   コントロールプレーン: Zonal = $74.4 クレジットで実質無料
-#   proxy-pool e2-medium:  ~$13/月
-#   GCE Tailscale Router: ~$5/月（変更なし）
-#   合計: ~$18/月
+# GCE（mc-proxy MIG / mc-monitoring-1）が共用するネットワーク基盤。
 # ============================================================
 
 # ============================================================
@@ -33,16 +19,9 @@ resource "google_compute_subnetwork" "tak_subnet" {
   region        = var.region
   network       = google_compute_network.tak_vpc.id
 
-  # GKE 用のセカンダリレンジ
-  secondary_ip_range {
-    range_name    = "pods"
-    ip_cidr_range = var.pod_cidr
-  }
-
-  secondary_ip_range {
-    range_name    = "services"
-    ip_cidr_range = var.service_cidr
-  }
+  # セカンダリレンジは使用しない。true でないと、定義を省いても API 上の
+  # 既存レンジが残り続ける（provider が API 値を既定値として扱うため）。
+  send_secondary_ip_range_if_empty = true
 
   private_ip_google_access = true
 }
@@ -70,7 +49,8 @@ resource "google_compute_firewall" "tailscale_udp" {
   description = "Allow Tailscale UDP traffic for VPN"
 }
 
-# Minecraft 用（LoadBalancer 経由だが念のため）
+# Minecraft 用（mc-proxy の socat が 25565/TCP・19132/UDP で待受）
+# MIG オートヒーリングの TCP:25565 ヘルスチェックもこのルールで到達する（gce.tf 参照）
 resource "google_compute_firewall" "minecraft_tcp" {
   name    = "${var.vpc_name}-allow-minecraft"
   network = google_compute_network.tak_vpc.name
@@ -92,7 +72,7 @@ resource "google_compute_firewall" "minecraft_tcp" {
   description = "Allow Minecraft TCP/UDP traffic"
 }
 
-# 内部通信用（GKE 内部）
+# VPC 内部通信用
 resource "google_compute_firewall" "internal" {
   name    = "${var.vpc_name}-allow-internal"
   network = google_compute_network.tak_vpc.name
@@ -111,32 +91,17 @@ resource "google_compute_firewall" "internal" {
     protocol = "icmp"
   }
 
-  source_ranges = [
-    var.subnet_cidr,
-    var.pod_cidr,
-    var.service_cidr,
-  ]
+  source_ranges = [var.subnet_cidr]
 
   description = "Allow internal communication within VPC"
 }
 
 # ============================================================
-# GKE Standard Cluster（2026-05-03 GCE 移行により削除）
+# 静的IP（Minecraft 公開エンドポイント 35.200.78.252）
 # ============================================================
-# 削除理由: GCE e2-medium + Docker Compose に移行（月額 81% 削減）
-# 参照: Terraform/gce.tf, gce/README.md
-
-# ============================================================
-# Cloud NAT (廃止済み)
-# ============================================================
-# ADR-001: enable_private_nodes = false によりノードが外部IPを持つため
-# Cloud NAT は不要になった。tak-vpc-router / tak-vpc-nat は terraform apply で削除される。
-# 削除日: 2026-05-02
-
-# ============================================================
-# Static IP for LoadBalancer
-# ============================================================
-# DNS 設定用の固定 IP（Nginx GW の LB に使用）
+# mc-proxy MIG のインスタンステンプレート access_config.nat_ip で付与する（gce.tf）。
+# ⚠️ google_compute_address は description を含む属性変更が再作成（= 公開IPが変わる）に
+#    なるため、description の文言が古くても変更しないこと。
 
 resource "google_compute_address" "minecraft_ip" {
   name        = "tagomori-minecraft-ip"

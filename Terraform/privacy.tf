@@ -2,11 +2,11 @@
 # プライバシー設計: プレイヤー XUID ハッシュ化 salt
 # ============================================================
 # XUID を直接 BQ に保存せず SHA256(XUID + salt) で匿名化する。
-# salt は Secret Manager で管理し GCE VM の ADC で動的取得する。
+# salt は Secret Manager で管理し、Cloud Function mc-log-processor が実行時に取得する。
 #
-# フロー:
-#   itzg/mc-monitor → XUID取得 → hash_xuid(xuid, salt)
-#   → player_hash (BQ server_metrics) → Looker Studio
+# フロー（log_pipeline.tf）:
+#   Pub/Sub mc-raw-logs → mc-log-processor で SHA256(XUID + salt)
+#   → player_hash (BQ player_activities) → Looker Studio
 #
 # ⚠️ salt は tfstate に保存される。tfstate 紛失時は Secret Manager
 #    コンソールからバックアップを取ること。

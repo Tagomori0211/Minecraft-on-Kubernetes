@@ -1,13 +1,16 @@
 # ============================================================
-# GCE Monitoring VM (VictoriaMetrics + Grafana)
+# GCE Monitoring VM (mc-monitoring-1)
 # ============================================================
 # 構成:
 #   - e2-small / asia-northeast1-b (monitoring 専用)
-#   - VictoriaMetrics + Grafana を Docker Compose で運用
-#   - vmagent は k3s-worker 内で動作し Tailscale 経由で remote_write
-#   - Grafana アクセス: IAP SSH トンネル経由（外部ポート非公開）
+#   - gce/monitoring/compose.yaml を Docker Compose で運用
+#     VictoriaMetrics / VictoriaLogs / Vector / Grafana / vmalert /
+#     Alertmanager / alertmanager-discord / discord-notifier
+#   - vmagent / Vector DaemonSet は k3s-worker 内で動作し Tailscale 経由で送信
+#   - Grafana アクセス: Tailscale 経由、または IAP SSH トンネル（外部ポート非公開）
 #     gcloud compute ssh mc-monitoring-1 --zone=asia-northeast1-b \
 #       --tunnel-through-iap -- -L 3000:localhost:3000
+# ⚠️ user-data は gce/monitoring-cloud-init.yaml を file() で埋め込む。
 # ============================================================
 
 # ============================================================

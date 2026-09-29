@@ -69,7 +69,7 @@ resource "google_bigquery_table" "server_metrics" {
 # ============================================================
 # BQ 権限: 既存の mc-proxy-sa に dataEditor を付与
 # ============================================================
-# SA key 不要。GCE VM の cloud-platform スコープで ADC が自動提供される。
+# k3s bq-metrics Pod が mc-proxy-sa をインパーソネートして INSERT する（ファイル冒頭参照）。
 # dataset レベルのみ（project-wide 権限を避ける）。
 
 resource "google_bigquery_dataset_iam_member" "mc_proxy_bq_editor" {
@@ -88,6 +88,9 @@ resource "google_bigquery_dataset_iam_member" "mc_proxy_bq_editor" {
 # NOTE: server_metrics は VictoriaMetrics → k3s bq-metrics Deployment が稼働して
 #       初めてデータが入る。billing_export 側は 2026-03-01〜 のデータあり。
 #       双方にデータが揃った日付から JOIN 結果が出る。
+# ⚠️ 現行の bq-metrics（k8s/onprem/40-bq-metrics.yaml）は mc:*:avg15s / max15s 等の
+#    15 秒系列を INSERT しているが、この VIEW は旧 vmalert の mc:*:avg15m 系列を参照している。
+#    metric_name が一致しないため按分列が NULL になる。修正時は VIEW クエリの変更（apply 必要）。
 
 resource "google_bigquery_table" "cost_analysis_view" {
   project             = var.project_id

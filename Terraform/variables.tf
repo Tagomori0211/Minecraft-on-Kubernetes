@@ -25,13 +25,13 @@ variable "terraform_executor_email" {
 }
 
 variable "region" {
-  description = "GCP Region for GKE cluster"
+  description = "GCP リージョン"
   type        = string
   default     = "asia-northeast1" # 東京リージョン
 }
 
 variable "zone" {
-  description = "GCP Zone for GKE cluster（ゾーナル = コントロールプレーン実質無料）"
+  description = "GCP ゾーン（mc-proxy MIG / mc-monitoring-1 の配置先）"
   type        = string
   default     = "asia-northeast1-b"
 }
@@ -52,45 +52,10 @@ variable "vpc_name" {
 }
 
 variable "subnet_cidr" {
-  description = "Subnet CIDR for GKE nodes"
+  description = "Subnet CIDR（GCE VM 用）"
   type        = string
   default     = "10.100.0.0/20" # 4096 IPs
 }
-
-variable "pod_cidr" {
-  description = "Secondary CIDR for Pods"
-  type        = string
-  default     = "10.101.0.0/16" # 65536 Pod IPs
-}
-
-variable "service_cidr" {
-  description = "Secondary CIDR for Services"
-  type        = string
-  default     = "10.102.0.0/20" # 4096 Service IPs
-}
-
-
-# ============================================================
-# Tailscale Variables
-# ============================================================
-variable "tailscale_auth_key" {
-  description = "Tailscale Auth Key (reusable, ephemeral recommended)"
-  type        = string
-  sensitive   = true
-  default     = "" # CI/CD or terraform.tfvars で設定
-}
-
-variable "onprem_tailscale_subnet" {
-  description = "On-premises subnet advertised via Tailscale"
-  type        = string
-  default     = "10.43.0.0/16" # k3s Service CIDR (要確認)
-}
-
-# ============================================================
-# Cost Optimization
-# ============================================================
-# NOTE: Spot 制御は Node Pool 単位で行うため、この変数は廃止
-# proxy-pool: Regular（Velocity 終窯 = 全サーバーダウンのため Spot 不可）
 
 # ============================================================
 # Proxmox Variables（オンプレ VM管理）

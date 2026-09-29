@@ -94,7 +94,7 @@ resource "google_pubsub_subscription" "billing_alerts_gce" {
 }
 
 # mc-monitoring-sa に Pull サブスクリプション Subscriber 権限を付与
-# （discord-notifier が mc-monitoring-1 で課金/沈黙アラートを pull する）
+# （discord-notifier が mc-monitoring-1 で課金アラートを pull する）
 resource "google_pubsub_subscription_iam_member" "mc_monitoring_billing_subscriber" {
   project      = var.project_id
   subscription = google_pubsub_subscription.billing_alerts_gce.name
