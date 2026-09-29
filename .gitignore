@@ -1,287 +1,75 @@
-# Byte-compiled / optimized / DLL files
-__pycache__/
-*.py[codz]
-*$py.class
+# ============================================================
+# Minecraft-on-Kubernetes .gitignore
+# ============================================================
 
-# C extensions
-*.so
-
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py.cover
-.hypothesis/
-.pytest_cache/
-cover/
-
-# Translations
-*.mo
-*.pot
-
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
-
-# Flask stuff:
-instance/
-.webassets-cache
-
-# Scrapy stuff:
-.scrapy
-
-# Sphinx documentation
-docs/_build/
-
-# PyBuilder
-.pybuilder/
-target/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# IPython
-profile_default/
-ipython_config.py
-
-# pyenv
-#   For a library or package, you might want to ignore these files since the code is
-#   intended to run in multiple environments; otherwise, check them in:
-# .python-version
-
-# pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
-#   install all needed dependencies.
-#Pipfile.lock
-
-# UV
-#   Similar to Pipfile.lock, it is generally recommended to include uv.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#uv.lock
-
-# poetry
-#   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
-#poetry.lock
-#poetry.toml
-
-# pdm
-#   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
-#   pdm recommends including project-wide configuration in pdm.toml, but excluding .pdm-python.
-#   https://pdm-project.org/en/latest/usage/project/#working-with-version-control
-#pdm.lock
-#pdm.toml
-.pdm-python
-.pdm-build/
-
-# pixi
-#   Similar to Pipfile.lock, it is generally recommended to include pixi.lock in version control.
-#pixi.lock
-#   Pixi creates a virtual environment in the .pixi directory, just like venv module creates one
-#   in the .venv directory. It is recommended not to include this directory in version control.
-.pixi
-
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
-__pypackages__/
-
-# Celery stuff
-celerybeat-schedule
-celerybeat.pid
-
-# SageMath parsed files
-*.sage.py
-
-# Environments
+# ---- 機密情報（絶対にコミットしない）----
 .env
 .envrc
-.venv
-env/
+secret.yaml
+*-secret.yaml
+**/*_secret.yaml
+onprem_kubeconfig.yaml
+k8s/onprem/onprem_*
+**/*_gcloud_auth_plugin_cache
+# PlayersSync ConfigMap（DB パスワードを含む）
+k8s/onprem/playersync-configmaps.yaml
+# DeepSeekCode（機密情報を含む）
+DeepSeekCode.sh
+# GCE: 平文 secret は Secret Manager から動的取得する
+**/forwarding.secret
+# mc-monitoring-1: DISCORD_WEBHOOK は cloud-init が Secret Manager から生成
+gce/monitoring/.env
+gce/monitoring/alertmanager/secrets/
+# Claude Code のローカル設定
+.claude/settings.local.json
+
+# ---- Terraform ----
+Terraform/secret.tfvars
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+# plan ファイル（機密値を含む。tf-safe-apply の -out=tfplan も対象）
+tfplan
+*.tfplan
+*.tfplan.binary
+crash.log
+# Cloud Function ビルドアーティファクト
+Terraform/billing_notifier.zip
+Terraform/cloud_function_source/mc-log-processor.zip
+
+# ---- Python ----
+__pycache__/
+*.py[codz]
+.venv/
 venv/
-ENV/
-env.bak/
-venv.bak/
-
-# Spyder project settings
-.spyderproject
-.spyproject
-
-# Rope project settings
-.ropeproject
-
-# mkdocs documentation
-/site
-
-# mypy
+env/
+.pytest_cache/
 .mypy_cache/
-.dmypy.json
-dmypy.json
+.ruff_cache/
 
-# Pyre type checker
-.pyre/
+# ---- ビルド成果物・ログ ----
+build/
+*.log
 
-# pytype static type analyzer
-.pytype/
-
-# Cython debug symbols
-cython_debug/
-
-# PyCharm
-#  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
-#  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
-#  and can be added to the global gitignore or merged into this file.  For a more nuclear
-#  option (not recommended) you can uncomment the following to ignore the entire idea folder.
-#.idea/
-
-# Context and Documentation
+# ---- ローカル専用ファイル ----
+# 手元スクリプト（gce/ 配下の運用スクリプトは管理対象として例外）
+scripts/
+!gce/scripts/
+!gce/monitoring/scripts/
+Task_mds/
+DocMd/
+ModList/
+MC_addon-raw/
+# VictoriaMetrics クエリ定義メモ
+query.txt
 sushiski-infra-context.md
 session-context.md
 Documents/Mermaids/roadmap.mermaid
 
-
-# GKE / Cloud Secrets
-**/*_gcloud_auth_plugin_cache
-**/*_secret.yaml
-onprem_kubeconfig.yaml
-
-# Abstra
-# Abstra is an AI-powered process automation framework.
-# Ignore directories containing user credentials, local state, and settings.
-# Learn more at https://abstra.io/docs
-.abstra/
-
-# Visual Studio Code
-#  Visual Studio Code specific template is maintained in a separate VisualStudioCode.gitignore 
-#  that can be found at https://github.com/github/gitignore/blob/main/Global/VisualStudioCode.gitignore
-#  and can be added to the global gitignore or merged into this file. However, if you prefer, 
-#  you could uncomment the following to ignore the entire vscode folder
-# .vscode/
-
-# Ruff stuff:
-.ruff_cache/
-
-# PyPI configuration file
-.pypirc
-
-# Cursor
-#  Cursor is an AI-powered code editor. `.cursorignore` specifies files/directories to
-#  exclude from AI features like autocomplete and code analysis. Recommended for sensitive data
-#  refer to https://docs.cursor.com/context/ignore-files
-.cursorignore
-.cursorindexingignore
-
-# Marimo
-marimo/_static/
-marimo/_lsp/
-__marimo__/
-
-#Terraform
-Terraform/secret.tfvars
-Terraform/billing_notifier.zip
-# Terraform generated files
-.terraform/
-*.tfplan
-*.tfplan.binary
-*.tfstate
-*.tfstate.*
-.terraform.lock.hcl
-crash.log
-# Specific to some terraform workflows
-# .terraform-version
-# .vscode/
-
-# k3s secret
-secret.yaml
-*-secret.yaml
-
-# GCE proxy: 平文 secret は Secret Manager から動的取得するためコミット禁止
-gce/velocity/forwarding.secret
-
-# Temporary k8s/secret files
-k8s/gke/gke_*
-k8s/gke/onprem_kubeconfig.yaml
-k8s/onprem/onprem_*
-
-# Large files
+# ---- Minecraft データ（大容量・バイナリ）----
 world.zip
-
-# Scripts (gce/scripts/ ・gce/monitoring/scripts/ は運用スクリプトを含むため例外)
-scripts/
-!gce/scripts/
-!gce/monitoring/scripts/
-
-# Alertmanager-discord ブリッジの DISCORD_WEBHOOK は Secret Manager から生成（機密）
-gce/monitoring/.env
-gce/monitoring/alertmanager/secrets/
-
-# Tasks
-Task_mds/
-
-# backups/
 *.mcworld
-
-# addon-raw
-MC_addon-raw/
 *.mcaddon
 *.mcpack
 *.mctemplate
-
-# ModList（全ファイル管理外）
-ModList/
-
-# PlayersSync ConfigMap（DB パスワードを含むため管理外）
-k8s/onprem/playersync-configmaps.yaml
-# DeepSeekCode（機密情報を含むため管理外）
-DeepSeekCode.sh
-
-# Terraform Cloud Function ビルドアーティファクト
-Terraform/cloud_function_source/mc-log-processor.zip
-
-# Terraform ローカルプラグイン
-Terraform/.terraform/
-
-# query.txt VMqueryの定義
-query.txt
-DocMd/
