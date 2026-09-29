@@ -59,8 +59,3 @@ metrics:
 
 logShipper:
   enabled: true
-
-velocity:
-  enabled: false
-  secretName: "velocity-secret"
-  secretKey: "velocity-forwarding-secret"

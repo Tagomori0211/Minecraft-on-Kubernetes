@@ -9,8 +9,8 @@
 #
 # 接続フロー:
 #   Java    : GCE socat-tcp(:25565) → Tailscale → svc-survival:30065
-#   Bedrock : GCE socat-bedrock(:19132) → Tailscale → svc-bedrock:19132
-#   Prometheus → Tailscale → mc-monitor(:8080) 各Pod
+#   Bedrock : GCE socat-bedrock(:19132) → Tailscale → hostPort 19132
+#   メトリクス: vmagent (monitoring-prometheus ns) → svc-*:8080 → GCE VictoriaMetrics
 # ============================================================
 
 # ── Namespace ────────────────────────────────────────────────
@@ -23,33 +23,13 @@ metadata:
     location: onprem-minecraft-server
 
 ---
-# ── Paper-Velocity 設定テンプレート ──────────────────────────
-# Velocity forwarding secret 設定（Paper サーバー用 / 現在未使用）
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: paper-velocity-config
-  namespace: minecraft
-  labels:
-    app.kubernetes.io/part-of: tak-pipeline
-data:
-  paper-global.yml.template: |
-    proxies:
-      velocity:
-        enabled: true
-        online-mode: true
-        secret: "__VELOCITY_SECRET__"
-
----
-# Java サーバー (Survival 統合) は Helm Chart で管理
-
----
 # ============================================================
 # Bedrock カスタム Prometheus エクスポーター
 # ============================================================
-# BDS 1.26.x は RakNet Unconnected Pong に MOTD 文字列を含まない
-# 33 バイト最小応答を返す（itzg/mc-monitor では unexpected EOF → healthy=0）。
-# このエクスポーターは MOTD の有無に関わらず任意の Pong 応答を healthy=1 と判定する。
+# GCE 入口 (35.200.78.252:19132) へ RakNet Unconnected Ping を送り、プレイヤー視点の
+# 到達性を計測する。healthy は pong に MOTD(server-ID) があるか（=接続可能か）で判定し、
+# responding / motd_present も個別に公開する（vmalert BedrockUnjoinableNoMOTD で使用）。
+# 経緯: Documents/OperationPostmortem/postmortem-bedrock-motd-unjoinable.md
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -175,11 +155,10 @@ data:
 
 ---
 # ============================================================
-# 3. Bedrock Server (2GB)
+# Bedrock Server (BDS)
 # ============================================================
-# さくらVPS Nginx(UDP Proxy) → Tailscale → このサーバー
-# Nginx_Sakura --> TS_Router_Sub -->|転送| Bedrock_Server
-# (infrastructure.mermaid)
+# GCE socat-bedrock (UDP 19132, fork 透過) → Tailscale → hostPort 19132
+# (Documents/Mermaids/infrastructure.mermaid)
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -261,8 +240,8 @@ spec:
         # NOTE(2026-06-21): 「MOTDなし最小Pong は BDS1.26.x 仕様」は誤認だった。
         #   実際は level.dat の LANBroadcast=0 によるワールド固有バグで、Bedrock 接続不可の真因。
         #   修正済み → Documents/OperationPostmortem/postmortem-bedrock-motd-unjoinable.md
-        #   ⚠️ この自作エクスポーターは MOTDなしでも healthy=1 を返し、当該障害を17h検知できなかった。
-        #      → MOTD有無 / players_online が長時間0 を監視・アラート条件に追加すること。
+        #   旧版はMOTDなしでも healthy=1 を返し当該障害を17h検知できなかったため、
+        #   healthy を MOTD 有無で判定するよう改修し、vmalert に BedrockUnjoinableNoMOTD を追加済み。
         - name: mc-monitor
           image: python:3.12-alpine
           command: ["python3", "/scripts/monitor.py"]

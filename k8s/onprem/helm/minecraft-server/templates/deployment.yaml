@@ -26,36 +26,8 @@ spec:
         prometheus.io/path: "/metrics"
     spec:
       terminationGracePeriodSeconds: 120
-{{- if or .Values.velocity.enabled .Values.server.extraConfigMaps }}
-      initContainers:
-{{- if .Values.velocity.enabled }}
-        - name: inject-velocity-secret
-          image: busybox:1.36
-          command: ["sh", "-c"]
-          args:
-            - |
-              echo -n "${VELOCITY_SECRET}" > /data/forwarding.secret
-              echo -n "${VELOCITY_SECRET}" > /data/velocity.secret
-              {{- if eq .Values.server.type "PAPER" }}
-              mkdir -p /data/config
-              if [ ! -f /data/config/paper-global.yml ]; then
-                printf 'proxies:\n  bungee-cord:\n    online-mode: true\n  proxy-protocol: false\n  velocity:\n    enabled: true\n    online-mode: true\n    secret: "%s"\n' "${VELOCITY_SECRET}" > /data/config/paper-global.yml
-              else
-                sed -i 's/enabled: false/enabled: true/g' /data/config/paper-global.yml
-                sed -i "s|    secret:.*|    secret: ${VELOCITY_SECRET}|g" /data/config/paper-global.yml
-              fi
-              {{- end }}
-          env:
-            - name: VELOCITY_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.velocity.secretName }}
-                  key: {{ .Values.velocity.secretKey }}
-          volumeMounts:
-            - name: data
-              mountPath: /data
-{{- end }}
 {{- if .Values.server.extraConfigMaps }}
+      initContainers:
         - name: copy-extra-configs
           image: busybox:1.36
           command: ["sh", "-c"]
@@ -72,7 +44,6 @@ spec:
             - name: cm-{{ .name }}
               mountPath: /cm-staging-{{ .name }}
             {{- end }}
-{{- end }}
 {{- end }}
       containers:
         - name: minecraft
@@ -91,18 +62,9 @@ spec:
             - { name: TZ, value: "Asia/Tokyo" }
             - name: JVM_XX_OPTS
               value: "{{ .Values.server.jvmOpts }}"
-{{- if and (ne .Values.server.type "PAPER") .Values.velocity.enabled }}
-            - name: MODRINTH_PROJECTS
-              value: {{ (concat (list "neoforged-velocity-support") (default (list) .Values.server.mods)) | join "," | quote }}
-{{- else if and (ne .Values.server.type "PAPER") .Values.server.mods }}
+{{- if .Values.server.mods }}
             - name: MODRINTH_PROJECTS
               value: {{ .Values.server.mods | join "," | quote }}
-{{- else if and (eq .Values.server.type "PAPER") .Values.server.mods }}
-            - name: MODRINTH_PROJECTS
-              value: {{ .Values.server.mods | join "," | quote }}
-{{- end }}
-{{- if and (eq .Values.server.type "PAPER") .Values.velocity.enabled }}
-            - { name: PAPER_VELOCITY_PROXY, value: "TRUE" }
 {{- end }}
 {{- if .Values.server.plugins }}
             - name: SPIGET_RESOURCES
