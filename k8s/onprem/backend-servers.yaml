@@ -228,6 +228,12 @@ spec:
               hostPort: 19132
               name: bedrock
               protocol: UDP
+          # send-command（/list・say・stop）は /proc/*/exe を読んでサーバープロセスを探す。
+          # サーバーは uid 1000 で動き、kubectl exec は root で入るため、別 uid の /proc/<pid>/exe を
+          # 読むには CAP_SYS_PTRACE が要る（無いと "failed to search for bedrock server process"）。
+          securityContext:
+            capabilities:
+              add: ["SYS_PTRACE"]
           volumeMounts:
             - mountPath: /data
               name: data
