@@ -6,7 +6,10 @@ Wants=network-online.target
 
 [Service]
 # RakNet は L7 / Nginx UDP プロキシで壊れるため、fork でクライアントごとに独立ソケットを作り透過転送する
-ExecStart=/usr/bin/socat UDP4-LISTEN:19132,fork,reuseaddr UDP4:100.107.122.45:19132
+# UDP には切断が無いので、-T 60 で 60 秒無通信の子プロセスを終了させる（接続中の RakNet は数秒ごとに通信するため切れない）。
+# 無いと監視の ping（15 秒ごと・毎回別ポート）で子プロセスが溜まり、TasksMax（767）到達で fork に失敗した socat が落ち、
+# 再起動で全セッションが切れる（2026-09-30 に約 2 時間 48 分ごとに発生）
+ExecStart=/usr/bin/socat -T 60 UDP4-LISTEN:19132,fork,reuseaddr UDP4:100.107.122.45:19132
 Restart=always
 RestartSec=2
 DynamicUser=yes

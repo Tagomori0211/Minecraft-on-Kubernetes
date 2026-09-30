@@ -272,10 +272,10 @@ flowchart LR
 
 ```ini
 # gce/gateway/systemd/mc-socat-bedrock.service
-ExecStart=/usr/bin/socat UDP4-LISTEN:19132,fork,reuseaddr UDP4:100.107.122.45:19132
+ExecStart=/usr/bin/socat -T 60 UDP4-LISTEN:19132,fork,reuseaddr UDP4:100.107.122.45:19132
 ```
 
-Bedrock の RakNet は L7 プロキシで壊れるため、`fork` オプションでクライアント毎に独立 UDP ソケットを生成し Tailscale 経由で k3s `hostPort` まで一切改変せず透過転送。Java 側も同じく `mc-socat-java`（`TCP4-LISTEN:25565,fork` → `100.107.122.45:30065`）で svc-survival の NodePort へ直結しており、Velocity / nginx-stream といった中間プロキシ層を撤去している。
+Bedrock の RakNet は L7 プロキシで壊れるため、`fork` オプションでクライアント毎に独立 UDP ソケットを生成し Tailscale 経由で k3s `hostPort` まで一切改変せず透過転送。UDP には切断が無いので `-T 60`（60 秒無通信で子プロセス終了）で後始末する。Java 側も同じく `mc-socat-java`（`TCP4-LISTEN:25565,fork` → `100.107.122.45:30065`）で svc-survival の NodePort へ直結しており、Velocity / nginx-stream といった中間プロキシ層を撤去している。
 
 ### 3. Tailscale ゼロトラストネットワーク
 
