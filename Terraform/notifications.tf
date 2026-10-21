@@ -41,6 +41,27 @@ resource "google_secret_manager_secret" "discord_webhook_url" {
 
 # mc-proxy-sa に discord_webhook_url の読み取り権限を付与
 # （mc-gateway の Alertmanager・課金通知と、backup CronJob の署名付き URL 通知が使う）
+# ============================================================
+# healthchecks.io ping URL（デッドマンスイッチ）
+# ⚠️ secret_data は Terraform 管理外。healthchecks.io でチェックを作成後に手動で設定:
+#   echo -n "https://hc-ping.com/<UUID>" | \
+#     gcloud secrets versions add mc-healthchecks-ping-url --data-file=-
+# 読み取り権限は gce.tf のプロジェクト単位 secretAccessor で付与済み。
+resource "google_secret_manager_secret" "healthchecks_ping_url" {
+  project   = var.project_id
+  secret_id = "mc-healthchecks-ping-url"
+
+  replication {
+    auto {}
+  }
+
+  labels = merge(local.common_labels, {
+    purpose = "deadman-switch"
+  })
+
+  depends_on = [google_project_service.secretmanager]
+}
+
 resource "google_secret_manager_secret_iam_member" "mc_proxy_webhook_access" {
   project   = var.project_id
   secret_id = google_secret_manager_secret.discord_webhook_url.secret_id

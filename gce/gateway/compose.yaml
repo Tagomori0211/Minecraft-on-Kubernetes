@@ -121,6 +121,8 @@ services:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
       # Discord webhook URL（cloud-init が Secret Manager から生成、nobody 読取専用）
       - ./secrets/discord_webhook:/etc/alertmanager/discord_webhook:ro
+      # healthchecks.io ping URL（デッドマンスイッチ、同上の方式で生成）
+      - ./secrets/healthchecks_url:/etc/alertmanager/healthchecks_url:ro
       - alertmanager-data:/alertmanager
     command:
       - "--config.file=/etc/alertmanager/alertmanager.yml"

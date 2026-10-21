@@ -113,6 +113,15 @@ write_files:
       chown 65534:65534 /opt/mc-gateway/secrets/discord_webhook
       chmod 0400 /opt/mc-gateway/secrets/discord_webhook
       echo "[fetch-gateway-secrets] discord_webhook を配置しました"
+      # デッドマンスイッチ用。Secret 未登録でも空ファイルの代わりにダミー URL を置き、
+      # compose のバインドマウントがディレクトリ化しないようにする（ping は失敗するだけ）
+      if ! gcloud secrets versions access latest --secret=mc-healthchecks-ping-url \
+          > /opt/mc-gateway/secrets/healthchecks_url 2>/dev/null; then
+        echo -n "https://hc-ping.com/NOT-CONFIGURED" > /opt/mc-gateway/secrets/healthchecks_url
+        echo "[fetch-gateway-secrets] mc-healthchecks-ping-url 未設定（ダミーを配置）"
+      fi
+      chown 65534:65534 /opt/mc-gateway/secrets/healthchecks_url
+      chmod 0400 /opt/mc-gateway/secrets/healthchecks_url
 
   # OS Login ユーザーは cloud-init 時点では存在しないため、SSH の open_session で docker グループへ追加する
   # （Status Platform の CI は 2 回目の SSH から docker を使う）。usermod は OS Login ユーザーに使えないため /etc/group を直接編集する

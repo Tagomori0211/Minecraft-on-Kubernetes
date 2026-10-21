@@ -2,6 +2,18 @@ groups:
   - name: minecraft-infra
     # vmalert が VictoriaMetrics(:8428) に対して評価し、発火を Alertmanager へ送る
     rules:
+      # ── デッドマンスイッチ（監視の監視）──
+      #    常に firing。Alertmanager が healthchecks.io へ定期 ping し、途絶すると
+      #    healthchecks.io（監視基盤の外）が Discord へ通知する。
+      #    VictoriaMetrics / vmalert / Alertmanager / GCE VM のどれが止まっても ping が切れる。
+      - alert: Watchdog
+        expr: vector(1)
+        labels:
+          severity: none
+        annotations:
+          summary: "デッドマンスイッチ（常時発火・正常）"
+          description: "このアラートが healthchecks.io に届かなくなったら監視基盤が止まっている。"
+
       # ── オンプレ沈黙（旧 healthcheck コンテナの置き換え）──
       - alert: OnpremSilence
         expr: absent(up{location="onprem"} == 1)

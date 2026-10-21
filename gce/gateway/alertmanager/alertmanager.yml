@@ -15,6 +15,13 @@ route:
   group_interval: 5m
   repeat_interval: 4h
   routes:
+    # デッドマンスイッチ: Watchdog は Discord に出さず healthchecks.io への ping にだけ使う
+    - matchers:
+        - alertname="Watchdog"
+      receiver: healthchecks
+      group_wait: 0s
+      group_interval: 1m
+      repeat_interval: 1m
     # Tailscale auth-key ローテは手動運用（Secret Manager を人手で再発行）のため、
     # 期限接近アラートは Alertmanager UI 上には残しつつ Discord 通知は抑止する。
     # 鍵ローテ時は vmalert/rules/minecraft.yml の epoch を更新すること。
@@ -27,5 +34,10 @@ receivers:
     discord_configs:
       - webhook_url_file: /etc/alertmanager/discord_webhook
         send_resolved: true
+  # healthchecks.io の ping URL（cloud-init が Secret Manager の mc-healthchecks-ping-url から生成）
+  - name: healthchecks
+    webhook_configs:
+      - url_file: /etc/alertmanager/healthchecks_url
+        send_resolved: false
   # 通知を出さない受信先（Discord 抑止用）
   - name: 'null'
