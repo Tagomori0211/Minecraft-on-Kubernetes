@@ -223,11 +223,19 @@ spec:
             - { name: PLAYER_IDLE_TIMEOUT, value: "30" }
             # RAKNET_FORCE_MTU は itzg 非対応の no-op だったため削除（2026-06-21）
             - { name: DISABLE_CLIENT_VIBRANT_VISUALS, value: "false" }
+            # 1.26.60 以降は NetherNet 以外では参加不可（2026-11-03 障害）。シグナリングは server-port の TCP、
+            # ゲームプレイは UDP。公開 IP を明示しないとクライアントへ k3s のローカルアドレスが広告される。
+            - { name: TRANSPORT, value: "nethernet" }
+            - { name: SERVER_UDP_PORTS, value: "35.200.78.252:19132:19132" }
           ports:
             - containerPort: 19132
               hostPort: 19132
               name: bedrock
               protocol: UDP
+            - containerPort: 19132
+              hostPort: 19132
+              name: bedrock-signal
+              protocol: TCP
           # send-command（/list・say・stop）は /proc/*/exe を読んでサーバープロセスを探す。
           # サーバーは uid 1000 で動き、kubectl exec は root で入るため、別 uid の /proc/<pid>/exe を
           # 読むには CAP_SYS_PTRACE が要る（無いと "failed to search for bedrock server process"）。

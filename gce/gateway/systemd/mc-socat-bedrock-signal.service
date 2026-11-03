@@ -1,0 +1,17 @@
+[Unit]
+Description=Minecraft Bedrock NetherNet signaling entrance (socat TCP 19132 -> k3s-worker hostPort 19132 via Tailscale)
+Documentation=https://github.com/Tagomori0211/Minecraft-on-Kubernetes
+After=network-online.target tailscaled.service
+Wants=network-online.target
+
+[Service]
+# 1.26.60 以降の BDS は transport=nethernet 必須。HTTP シグナリングは server-port の TCP で受け、
+# ゲームプレイの UDP は mc-socat-bedrock（19132/udp）が従来どおり運ぶ。
+ExecStart=/usr/bin/socat TCP4-LISTEN:19132,fork,reuseaddr TCP4:100.107.122.45:19132
+Restart=always
+RestartSec=2
+DynamicUser=yes
+OOMScoreAdjust=-900
+
+[Install]
+WantedBy=multi-user.target

@@ -156,7 +156,7 @@ runcmd:
   # systemd: 入口 socat（Java / Bedrock）・課金通知・監視スタック
   - install -m 0644 /opt/mc-gateway/systemd/*.service /etc/systemd/system/
   - systemctl daemon-reload
-  - systemctl enable --now mc-socat-java.service mc-socat-bedrock.service mc-discord-notifier.service
+  - systemctl enable --now mc-socat-java.service mc-socat-bedrock.service mc-socat-bedrock-signal.service mc-discord-notifier.service
   - systemctl enable --now mc-monitoring.service
 
   # Status Platform の CI（OS Login）用
@@ -165,6 +165,6 @@ runcmd:
   - printf '\nsession optional pam_exec.so /usr/local/bin/add-oslogin-docker-group.sh\n' >> /etc/pam.d/sshd
 
   # 起動確認ログ
-  - systemctl --no-pager status mc-socat-java mc-socat-bedrock mc-discord-notifier > /var/log/mc-gateway-bootstrap.log 2>&1 || true
+  - systemctl --no-pager status mc-socat-java mc-socat-bedrock mc-socat-bedrock-signal mc-discord-notifier > /var/log/mc-gateway-bootstrap.log 2>&1 || true
   - docker compose -f /opt/mc-gateway/compose.yaml ps >> /var/log/mc-gateway-bootstrap.log 2>&1 || true
   - tailscale ip -4 >> /var/log/mc-gateway-bootstrap.log 2>&1 || true

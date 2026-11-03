@@ -49,14 +49,14 @@ resource "google_compute_firewall" "tailscale_udp" {
   description = "Allow Tailscale UDP traffic for VPN"
 }
 
-# Minecraft 用（mc-gateway の socat が 25565/TCP・19132/UDP で待受）
+# Minecraft 用（mc-gateway の socat が 25565/TCP・19132/TCP（Bedrock NetherNet シグナリング）・19132/UDP で待受）
 resource "google_compute_firewall" "minecraft_tcp" {
   name    = "${var.vpc_name}-allow-minecraft"
   network = google_compute_network.tak_vpc.name
 
   allow {
     protocol = "tcp"
-    ports    = ["25565"]
+    ports    = ["25565", "19132"]
   }
 
   allow {
