@@ -12,7 +12,7 @@
 |------|------|
 | 発生日時 | 2026-10-28 04:00 (JST)（推定。BDS 1.26.60.6 への自動更新） |
 | 発覚日時 | 2026-11-03 17:41 (JST)（ユーザー指摘） |
-| 解消日時 | 2026-11-03 17:59 (JST)（サーバー側・入口の修正完了。実クライアントでの参加確認は未実施） |
+| 解消日時 | 2026-11-03 18:09 (JST)（GCE 経由で実クライアントの参加を確認。発覚から 28 分、影響開始から推定約 6.5 日） |
 | 影響範囲 | Bedrock サーバー `35.200.78.252:19132` へ全プレイヤーが参加不可（推定約 6.5 日）。Java は 2026-09-30 から計画休止中のため対象外。データ損失なし |
 | 対応者 | @Tagomori0211 + Claude Code |
 
@@ -42,6 +42,11 @@
   - `11/03 17:50`: server-side apply で入れ直し、Tailscale 経由で TCP 19132 に届くことを確認
   - `11/03 17:57`: mc-gateway に `mc-socat-bedrock-signal.service`（TCP 19132）を配置して起動
   - `11/03 17:59`: Terraform でファイアウォールに tcp:19132 を追加。公開 IP の TCP 19132 で HTTP 応答を確認
+  - `11/03 18:03`: オーナーから「クライアント接続失敗、ping 取得も失敗」の報告。原因は未特定（後述）
+  - `11/03 18:04`: Pod の UDP が 19132 ではなく 7551 だけで待ち受けていることを確認（RakNet ping に応答しないのは NetherNet では想定どおり）
+  - `11/03 18:05`: mc-gateway で 5 分間のパケットキャプチャを開始
+  - `11/03 18:09:37`: クライアントから TCP 19132 へ TLS ClientHello が届き、BDS が TLS アラート 40（handshake_failure）を返して切断（キャプチャは 18:09:40 で終了）
+  - `11/03 18:09:44`: `Player connected: Shinari5295`。GCE（socat）経由の NetherNet 参加を確認し、復旧とする
 
 ---
 
@@ -80,6 +85,12 @@ ssh k3s-worker 'sudo kubectl -n minecraft get deploy deploy-bedrock -o jsonpath=
   - `:latest` による無告知の BDS 更新で NetherNet が必須になった。一方で `transport=raknet` のまま、入口も TCP 19132 を通していなかった
   - 未確認の点がある。同じ ERROR は 1.26.52.3（10/14〜）でも出ていたが、その間も参加できていた。「1.26.60 で RakNet 参加が実際に拒否されるようになった」ことは、実クライアントでの再現でしか確定できない
 
+- **復旧後の観察（18:00〜18:10 のキャプチャと検証）**:
+  - NetherNet の参加は「TCP 19132 へのシグナリング → UDP 19132 でゲーム通信」の順に進む。参加直前の TCP では TLS が handshake_failure で拒否されたが、その 7 秒後に参加が成立した。この TLS 拒否は参加の妨げではない（Tailscale 経由で直接つないでも同じ応答で、socat 起因でもない）
+  - mc-gateway に来る 33 バイトの UDP（20 秒ごと、送信元は自宅のグローバル IP）は mc-monitor の RakNet ping。NetherNet では応答がなく、socat が `Connection refused` を出し続ける
+  - 18:03 の「接続失敗」の原因は特定できていない。17:59 のファイアウォール開放より前の試行だった可能性がある
+  - `keys/server_identity_key.pem` が存在せず、BDS は起動のたびにサーバー ID を新しく作っている。毎日 04:00 の再起動のたびに、プレイヤーはサーバーの信頼を承認し直すことになる
+
 ---
 
 ## 🛠️ 3. 対応内容
@@ -94,16 +105,19 @@ ssh k3s-worker 'sudo kubectl -n minecraft get deploy deploy-bedrock -o jsonpath=
 - [x] `k8s/onprem/backend-servers.yaml`: hostPort 19132/TCP（`bedrock-signal`）を追加。client-side apply ではこの TCP エントリが落ちるため、`kubectl apply --server-side` で適用した
 - [x] `gce/gateway/systemd/mc-socat-bedrock-signal.service`: socat TCP 19132 → k3s-worker:19132 を新設し、`cloud-init.yaml` で有効化。mc-gateway には手動で配置済み
 - [x] `Terraform/network.tf`: `tak-vpc-allow-minecraft` に tcp:19132 を追加し、apply 済み（in-place 変更 1 件）
-- [ ] 実クライアントから `35.200.78.252:19132` に参加できることを確認する（socat 越しの UDP が ICE で通るかは未検証）
+- [x] 実クライアントから `35.200.78.252:19132` に参加できることを確認（18:09:44、現行の socat 構成で成立）
 
 ---
 
 ## 💡 4. 学び・改善点
 
+- [ ] **サーバー ID の固定**: `serveridentity save` で `keys/server_identity_key.pem`（PVC 上）を保存し、再起動のたびに信頼の再承認が要る状態を解消する
+- [ ] **入口の改善**: socat（UDP は接続ごとに fork、60 秒で切断）を mc-gateway の nftables DNAT＋SNAT に置き換え、NetherNet の UDP 中継を安定させ e2-micro の負荷を下げる
 - [ ] **バージョン固定**: itzg の `VERSION` で BDS を固定し、更新はリリースノートを確認してから手動で行う
 - [ ] **監視の強化**: RakNet ping は NetherNet では応答しない。mc-monitor を公開 IP の TCP 19132 への HTTP 応答で生存確認する方式に変え、`BedrockUnjoinableNoMOTD` を見直す（このままでは誤発報する）
 - [ ] **監視の強化**: BDS 起動ログの `ERROR` を VictoriaLogs → vmalert → Discord で通知する（10/14 から毎日出ていた）
 - [ ] **監視の強化**: 「最後の参加から N 日」の弱いアラートを検討する
+- [ ] **調査手順**: パケットキャプチャは時間ではなく件数か手動停止で終わらせ、再現操作の途中で切れないようにする（今回は参加の 4 秒前に終了し、ゲーム通信の経路を観測できなかった）
 - [ ] **プロセスの改善**: Terraform の state を GCS backend に移し、どの clone からでも plan / apply できるようにする（現状は `~/MC_k3s/Terraform` のローカル state のみ）
 - [ ] **自動化**: manifest の適用を `kubectl apply --server-side` に統一する（Ansible を含む）。同じ番号の TCP/UDP ポートは client-side apply で落ちる
 - [ ] **ドキュメント**: README のゲームトラフィック図と `gce/README.md` に 19132/TCP（シグナリング）を追記する
